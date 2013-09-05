@@ -4,7 +4,8 @@
 if (NOT __cmake_setup_INCLUDED)
 set(__cmake_setup_INCLUDED 1)
 
-set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
+# Enable C++14
+set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++1y -stdlib=libc++")
 
 # On mac, use openssl from brew, not the default system one, because it is too old.
 # Run 'brew install openssl' to install it.
