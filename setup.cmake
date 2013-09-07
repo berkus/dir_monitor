@@ -45,13 +45,15 @@ find_package(Boost REQUIRED COMPONENTS ${BOOST_COMPONENTS})
 include_directories(${Boost_INCLUDE_DIR})
 
 # Create and link a test application.
-function(create_test NAME EXTRALIBS)
+function(create_test NAME)
+    cmake_parse_arguments(CT "NO_CTEST" "" "LIBS" ${ARGN})
     add_executable(test_${NAME} test_${NAME}.cpp)
-    target_link_libraries(test_${NAME} ${EXTRALIBS} ${Boost_LIBRARIES})
-    #target_link_libraries(test_${NAME} supc++)
+    target_link_libraries(test_${NAME} ${CT_LIBS} ${Boost_LIBRARIES})
     install(TARGETS test_${NAME}
         RUNTIME DESTINATION tests/unittests)
-    add_test(${NAME} test_${NAME})
+    if (NOT CT_NO_CTEST)
+        add_test(${NAME} test_${NAME})
+    endif (NOT CT_NO_CTEST)
 endfunction(create_test)
 
 endif (NOT __cmake_setup_INCLUDED)
