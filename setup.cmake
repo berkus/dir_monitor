@@ -7,6 +7,9 @@ set(__cmake_setup_INCLUDED 1)
 # Enable C++14
 set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++1y -stdlib=libc++")
 
+# Enable full error and warning reporting
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+
 # Nasty boost.unit_test_framework
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unneeded-internal-declaration")
 
