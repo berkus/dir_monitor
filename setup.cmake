@@ -8,7 +8,7 @@ set(__cmake_setup_INCLUDED 1)
 set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++1y -stdlib=libc++")
 
 # Nasty boost.unit_test_framework
-set(_extraFlags "${_extraFlags} -Wno-unneeded-internal-declaration")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unneeded-internal-declaration")
 
 # On mac, use openssl from brew, not the default system one, because it is too old.
 # Run 'brew install openssl' to install it.
