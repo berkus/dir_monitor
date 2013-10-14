@@ -40,8 +40,6 @@ endif (BUILD_TESTING)
 list(APPEND BOOST_COMPONENTS system)
 # For logging we need boost/posix_time
 list(APPEND BOOST_COMPONENTS date_time)
-# Serialization is used for streaming data to and from udp packets
-list(APPEND BOOST_COMPONENTS serialization)
 # Program_options used to parse cmdline args in some tests
 list(APPEND BOOST_COMPONENTS program_options)
 
