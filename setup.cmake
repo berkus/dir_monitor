@@ -52,6 +52,7 @@ list(APPEND BOOST_COMPONENTS program_options)
 
 #set(Boost_USE_MULTITHREAD ON)
 set(Boost_USE_STATIC_LIBS ON) # Easier to deploy elsewhere
+set(BOOST_ROOT /usr/local/opt/boost)
 find_package(Boost REQUIRED COMPONENTS ${BOOST_COMPONENTS})
 
 include_directories(${Boost_INCLUDE_DIR})
