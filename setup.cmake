@@ -12,6 +12,7 @@ set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++1y -stdlib=libc+
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++")
 
 if (UNIX AND NOT APPLE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lc++ -frtti")
 endif()
 
