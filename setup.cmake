@@ -11,11 +11,6 @@ set(CMAKE_CXX_FLAGS "-m64 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "-ferror-limit=3 ${CMAKE_CXX_FLAGS} -std=c++1y -stdlib=libc++")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++")
 
-if (UNIX AND NOT APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lc++ -frtti")
-endif()
-
 # Enable full error and warning reporting
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wno-unused-parameter")
 
@@ -64,6 +59,9 @@ function(create_test NAME)
     cmake_parse_arguments(CT "NO_CTEST" "" "LIBS" ${ARGN})
     add_executable(test_${NAME} test_${NAME}.cpp)
     target_link_libraries(test_${NAME} ${CT_LIBS} ${Boost_LIBRARIES})
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(test_${NAME} c++)
+    endif()
     install(TARGETS test_${NAME}
         RUNTIME DESTINATION tests/unittests)
     if (NOT CT_NO_CTEST)
