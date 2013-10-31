@@ -17,6 +17,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wno-unused-parame
 # Nasty boost.unit_test_framework
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unneeded-internal-declaration")
 
+# Clang invocation debug
+set(CMAKE_CXX_FLAGS "-v ${CMAKE_CXX_FLAGS}")
+
 # On mac, use openssl from brew, not the default system one, because it is too old.
 # Run 'brew install openssl' to install it.
 if (APPLE)
