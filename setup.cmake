@@ -48,6 +48,8 @@ list(APPEND BOOST_COMPONENTS system)
 list(APPEND BOOST_COMPONENTS date_time)
 # Program_options used to parse cmdline args in some tests
 list(APPEND BOOST_COMPONENTS program_options)
+# Thread library used in some nat libs and tests
+list(APPEND BOOST_COMPONENTS thread)
 
 #set(Boost_USE_MULTITHREAD ON)
 set(Boost_USE_STATIC_LIBS ON) # Easier to deploy elsewhere
