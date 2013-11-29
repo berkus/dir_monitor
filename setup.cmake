@@ -50,6 +50,10 @@ list(APPEND BOOST_COMPONENTS date_time)
 list(APPEND BOOST_COMPONENTS program_options)
 # Thread library used in some nat libs and tests
 list(APPEND BOOST_COMPONENTS thread)
+if (UNIX AND NOT APPLE)
+    # Filesystem library used on Linux for creating config directories
+    list(APPEND BOOST_COMPONENTS filesystem)
+endif (UNIX AND NOT APPLE)
 
 #set(Boost_USE_MULTITHREAD ON)
 set(Boost_USE_STATIC_LIBS ON) # Easier to deploy elsewhere
