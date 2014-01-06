@@ -222,8 +222,9 @@ private:
             { 
                 // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0. 
                 // The completion key must be deleted then as it won't be used anymore. 
-                if (!bytes_transferred) 
+                if (!bytes_transferred) {
                     delete ck; 
+                }
                 else 
                 { 
                     // We must check if the implementation still exists. If the I/O object is destroyed while a directory event 
@@ -232,8 +233,9 @@ private:
                     implementation_type impl = ck->impl.lock(); 
 
                     // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore. 
-                    if (!impl) 
+                    if (!impl) {
                         delete ck; 
+                    }
                     else 
                     { 
                         DWORD offset = 0; 
