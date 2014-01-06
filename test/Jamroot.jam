@@ -1,0 +1,23 @@
+# 1) site-config.jam or user-config.jam must contain a line like this one: 
+#    using boost : 1.39 : <include>C:/include/boost-1_39 <library>C:/lib ; 
+# 2) Apply this patch from Steven Watanabe: 
+#    Index: tools/build/v2/contrib/boost.jam
+#    ===================================================================
+#    --- tools/build/v2/contrib/boost.jam       (revision 56813)
+#    +++ tools/build/v2/contrib/boost.jam       (working copy)
+#    @@ -211,7 +211,7 @@
+#             <link>shared:<define>BOOST_GRAPH_DYN_LINK ;
+#         lib date_time        : : : : 
+#             <link>shared:<define>BOOST_DATE_TIME_DYN_LINK ;
+#    -    lib test             : : : : 
+#    +    lib unit_test_framework : : : : 
+#             <link>shared:<define>BOOST_TEST_DYN_LINK  ;
+#         lib regex            : : : : 
+#             <link>shared:<define>BOOST_REGEX_DYN_LINK  ;
+
+import testing ; 
+import boost ; 
+boost.use-project ; 
+project : requirements <include>../src <library>/boost//filesystem <library>/boost//system <library>/boost//thread <library>/boost//unit_test_framework <host-os>windows:<define>_WIN32_WINNT=0x0501 ; 
+run sync.cpp ; 
+run async.cpp ; 
