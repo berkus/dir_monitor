@@ -4,9 +4,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying 
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) 
 // 
-
-#ifndef BOOST_ASIO_DIR_MONITOR_IMPL_HPP 
-#define BOOST_ASIO_DIR_MONITOR_IMPL_HPP 
+#pragma once
 
 #include <boost/noncopyable.hpp> 
 #include <boost/ptr_container/ptr_unordered_map.hpp> 
@@ -99,4 +97,3 @@ private:
 } 
 } 
 
-#endif 

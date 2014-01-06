@@ -4,9 +4,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying 
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) 
 // 
-
-#ifndef directory_A004F6FF_8109_4a0e_970D_3FA0ECE1F2FF 
-#define directory_A004F6FF_8109_4a0e_970D_3FA0ECE1F2FF 
+#pragma once
 
 #include <boost/filesystem.hpp> 
 #include <boost/thread.hpp> 
@@ -80,4 +78,3 @@ private:
     boost::filesystem::path name_; 
 }; 
 
-#endif 

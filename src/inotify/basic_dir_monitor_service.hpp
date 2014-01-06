@@ -4,9 +4,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying 
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) 
 // 
-
-#ifndef BOOST_ASIO_BASIC_DIR_MONITOR_SERVICE_HPP 
-#define BOOST_ASIO_BASIC_DIR_MONITOR_SERVICE_HPP 
+#pragma once
 
 #include "dir_monitor_impl.hpp" 
 #include <boost/asio.hpp> 
@@ -146,4 +144,3 @@ boost::asio::io_service::id basic_dir_monitor_service<DirMonitorImplementation>:
 } 
 } 
 
-#endif 

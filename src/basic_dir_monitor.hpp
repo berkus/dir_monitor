@@ -4,9 +4,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See accompanying 
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt) 
 // 
-
-#ifndef BOOST_ASIO_BASIC_DIR_MONITOR_HPP 
-#define BOOST_ASIO_BASIC_DIR_MONITOR_HPP 
+#pragma once
 
 #include <boost/asio.hpp> 
 #include <string> 
@@ -80,4 +78,3 @@ public:
 } 
 } 
 
-#endif 
