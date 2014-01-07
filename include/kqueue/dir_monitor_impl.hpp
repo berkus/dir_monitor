@@ -182,7 +182,10 @@ private:
             dir_entry_map::iterator ito = old_entries.find(itn->first);
             if (ito != old_entries.end())
             {
-                if (!boost::filesystem::equivalent(itn->second.path(), ito->second.path()))
+                if (!boost::filesystem::equivalent(itn->second.path(), ito->second.path()) or
+                    boost::filesystem::last_write_time(itn->second.path()) != boost::filesystem::last_write_time(ito->second.path()) or
+                    (boost::filesystem::is_regular_file(itn->second.path()) and boost::filesystem::is_regular_file(ito->second.path()) and
+                    boost::filesystem::file_size(itn->second.path()) != boost::filesystem::file_size(ito->second.path())))
                 {
                     pushback_event(dir_monitor_event(dir, itn->second.path().filename().native(), dir_monitor_event::modified));
                 }
