@@ -208,7 +208,7 @@ private:
                 struct timespec timeout;
                 timeout.tv_sec = 0;
                 timeout.tv_nsec = 200000000;
-                unsigned eventFilter = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME;//@todo EXTEND and ATTRIB too
+                unsigned eventFilter = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_EXTEND | NOTE_ATTRIB;
                 struct kevent event;
                 struct kevent eventData;
                 EV_SET(&event, *dir->second, EVFILT_VNODE, EV_ADD | EV_CLEAR, eventFilter, 0, 0);
