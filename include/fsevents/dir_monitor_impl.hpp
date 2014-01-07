@@ -85,8 +85,9 @@ public:
             ev = events_.front();
             events_.pop_front();
         }
-        else
+        else {
             ec = boost::asio::error::operation_aborted;
+        }
         return ev;
     }
 
