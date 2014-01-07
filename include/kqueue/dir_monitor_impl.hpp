@@ -238,8 +238,8 @@ private:
 
                 dir_entry_map new_entries;
                 scan(dir->first, new_entries);
-                compare(dir->first, entries, new_entries);
-                std::swap(entries, new_entries);
+                compare(dir->first, entries[dir->first], new_entries);
+                std::swap(entries[dir->first], new_entries);
             }
         }
     }
@@ -259,7 +259,7 @@ private:
     }
 
     int kqueue_;
-    dir_entry_map entries;
+    boost::unordered_map<std::string, dir_entry_map> entries;
     bool run_;
     boost::mutex work_thread_mutex_;
     boost::thread work_thread_;
