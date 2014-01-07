@@ -98,6 +98,7 @@ public:
     {
         boost::unique_lock<boost::mutex> lock(dirs_mutex_);
         dirs_.insert(dirname, new unix_handle(wd));
+        scan(dirname, entries[dirname]);
     }
 
     void remove_directory(const std::string &dirname)
