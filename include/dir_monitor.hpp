@@ -10,12 +10,14 @@
 #if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
 #  include "windows/basic_dir_monitor_service.hpp"
 #elif defined(linux) || defined(__linux) || defined(__linux__) || defined(__GNU__) || defined(__GLIBC__)
-#  include "inotify/basic_dir_monitor_service.hpp" 
-#elif (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
-#  include "kqueue/basic_dir_monitor_service.hpp" 
-#else 
-#  error "Platform not supported." 
-#endif 
+#  include "inotify/basic_dir_monitor_service.hpp"
+#elif defined(__APPLE__) && defined(__MACH__)
+#  include "fsevents/basic_dir_monitor_service.hpp"
+#elif defined(__FreeBSD__)
+#  include "kqueue/basic_dir_monitor_service.hpp"
+#else
+#  error "Platform not supported."
+#endif
 
 namespace boost {
 namespace asio {
