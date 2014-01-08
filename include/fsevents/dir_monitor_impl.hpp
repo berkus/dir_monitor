@@ -39,18 +39,18 @@ public:
         stop_fsevents();
     }
 
-    void add_directory(std::string dirname)
+    void add_directory(boost::filesystem::path dirname)
     {
         boost::unique_lock<boost::mutex> lock(dirs_mutex_);
-        dirs_.insert(dirname);
+        dirs_.insert(dirname.native());//@todo Store path in dictionary
         stop_fsevents();
         start_fsevents();
     }
 
-    void remove_directory(const std::string &dirname)
+    void remove_directory(boost::filesystem::path dirname)
     {
         boost::unique_lock<boost::mutex> lock(dirs_mutex_);
-        dirs_.erase(dirname);
+        dirs_.erase(dirname.native());
         stop_fsevents();
         start_fsevents();
     }
@@ -146,35 +146,40 @@ private:
     {
         size_t i;
         char **paths = (char**)eventPaths;
+        dir_monitor_impl* impl = (dir_monitor_impl*)clientCallBackInfo;
+        bool rename_old = true;
 
-        printf("Callback called\n");
-        for (i=0; i<numEvents; i++) {
-            std::cout << "Change " << eventIds[i] << " in " << paths[i] << ", flags " << [](unsigned flags) {
-                std::ostringstream oss;
-                if (flags & kFSEventStreamEventFlagMustScanSubDirs) oss << "MustScanSubDirs,";
-                if (flags & kFSEventStreamEventFlagUserDropped) oss << "UserDropped,";
-                if (flags & kFSEventStreamEventFlagKernelDropped) oss << "KernelDropped,";
-                if (flags & kFSEventStreamEventFlagEventIdsWrapped) oss << "EventIdsWrapped,";
-                if (flags & kFSEventStreamEventFlagHistoryDone) oss << "HistoryDone,";
-                if (flags & kFSEventStreamEventFlagRootChanged) oss << "RootChanged,";
-                if (flags & kFSEventStreamEventFlagMount) oss << "Mount,";
-                if (flags & kFSEventStreamEventFlagUnmount) oss << "Unmount,";
-                if (flags & kFSEventStreamEventFlagItemCreated) oss << "ItemCreated,";
-                if (flags & kFSEventStreamEventFlagItemRemoved) oss << "ItemRemoved,";
-                if (flags & kFSEventStreamEventFlagItemInodeMetaMod) oss << "ItemInodeMetaMod,";
-                if (flags & kFSEventStreamEventFlagItemRenamed) oss << "ItemRenamed,";
-                if (flags & kFSEventStreamEventFlagItemModified) oss << "ItemModified,";
-                if (flags & kFSEventStreamEventFlagItemFinderInfoMod) oss << "ItemFinderInfoMod,";
-                if (flags & kFSEventStreamEventFlagItemChangeOwner) oss << "ItemChangeOwner,";
-                if (flags & kFSEventStreamEventFlagItemXattrMod) oss << "ItemXattrMod,";
-                if (flags & kFSEventStreamEventFlagItemIsFile) oss << "ItemIsFile,";
-                if (flags & kFSEventStreamEventFlagItemIsDir) oss << "ItemIsDir,";
-                if (flags & kFSEventStreamEventFlagItemIsSymlink) oss << "ItemIsSymlink,";
-                return oss.str();
-            }(eventFlags[i]) << std::endl;
-            // @todo Split filename into dir and relative fname
-            // Figure out event types from set of flags.
-            // pushback_event(dir_monitor_event(dir, filename, dir_monitor_event::modified));
+
+        for (i = 0; i < numEvents; ++i)
+        {
+            boost::filesystem::path dir(paths[i]);
+            if (eventFlags[i] & kFSEventStreamEventFlagMustScanSubDirs) {
+                impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::recursive_rescan));
+            }
+            if (eventFlags[i] & kFSEventStreamEventFlagItemCreated) {
+                impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::added));
+            }
+            if (eventFlags[i] & kFSEventStreamEventFlagItemRemoved) {
+                impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::removed));
+            }
+            if (eventFlags[i] & kFSEventStreamEventFlagItemModified) {
+                impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::modified));
+            }
+            // We assume renames always come in pairs inside a single callback, old name first.
+            // This might be wrong in general, but I haven't seen evidence yet.
+            if (eventFlags[i] & kFSEventStreamEventFlagItemRenamed)
+            {
+                if (rename_old)
+                {
+                    rename_old = false;
+                    impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::renamed_old_name));
+                }
+                else
+                {
+                    rename_old = true;
+                    impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::renamed_new_name));
+                }
+            }
        }
     }
 
