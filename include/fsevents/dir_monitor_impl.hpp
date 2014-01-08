@@ -92,22 +92,31 @@ public:
     }
 
 private:
+    CFArrayRef make_array(boost::unordered_set<std::string> in)
+    {
+        CFArrayCallBacks callbacks;
+        CFMutableArrayRef arr = CFArrayCreateMutable(kCFAllocatorDefault, in.size(), &callbacks);
+        for (auto str : in) {
+            CFStringRef cfstr = CFStringCreateWithCString(kCFAllocatorDefault, str.c_str(), kCFStringEncodingUTF8);
+            CFArrayAppendValue(arr, cfstr);
+            // @todo CFRelease(cfstr); ??
+        }
+        return arr;
+    }
+
     void start_fsevents()
     {
-        // @todo Put paths into CFArrayRef
-        CFStringRef mypath = CFSTR("F95A7AE9-D5F5-459a-AB8D-28649FB1FF34");
-        CFArrayRef pathsToWatch = CFArrayCreate(NULL, (const void **)&mypath, 1, NULL);
-
         FSEventStreamContext context = {0, this, NULL, NULL, NULL};
         fsevents_ =
             FSEventStreamCreate(
                 kCFAllocatorDefault,
                 &boost::asio::dir_monitor_impl::fsevents_callback,
                 &context,
-                pathsToWatch, /* need to recreate on each added/removed dir? */
+                make_array(dirs_),
                 kFSEventStreamEventIdSinceNow, /* only new modifications */
                 (CFTimeInterval)5.0, /* 5 seconds latency interval */
-                kFSEventStreamCreateFlagIgnoreSelf|kFSEventStreamCreateFlagFileEvents);
+                kFSEventStreamCreateFlagFileEvents);
+        FSEventStreamRetain(fsevents_);
 
         if (!fsevents_)
         {
