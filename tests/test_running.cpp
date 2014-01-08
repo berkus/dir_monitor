@@ -7,15 +7,16 @@ boost::asio::io_service io_service;
 
 void create_file_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
-    std::cout << "Dir monitor event in " << ev.dirname << " for " << ev.filename << " change: "
+    std::cout << "Dir monitor event "
         << [](int type) { switch(type) {
             case boost::asio::dir_monitor_event::added: return "ADDED";
             case boost::asio::dir_monitor_event::removed: return "REMOVED";
             case boost::asio::dir_monitor_event::modified: return "MODIFIED";
             case boost::asio::dir_monitor_event::renamed_old_name: return "RENAMED (OLD NAME)";
             case boost::asio::dir_monitor_event::renamed_new_name: return "RENAMED (NEW NAME)";
+            case boost::asio::dir_monitor_event::recursive_rescan: return "RESCAN DIR";
             default: return "UKNOWN";
-        } } (ev.type) << std::endl;
+        } } (ev.type) << " " << ev.path << std::endl;
 }
 
 int main()
