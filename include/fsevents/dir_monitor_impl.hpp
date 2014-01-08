@@ -14,27 +14,17 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/unordered_set.hpp>
-#include <boost/enable_shared_from_this.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
 #include <string>
 #include <deque>
-
-#include <boost/asio.hpp>
 #include <boost/thread.hpp>
-#include <boost/bind.hpp>
-#include <boost/scoped_ptr.hpp>
-#include <boost/array.hpp>
-#include <fcntl.h>
-#include <unistd.h>
-#include <errno.h>
 #include <CoreServices/CoreServices.h>
 
 namespace boost {
 namespace asio {
 
-class dir_monitor_impl :
-    public boost::enable_shared_from_this<dir_monitor_impl>
+class dir_monitor_impl
 {
 public:
     dir_monitor_impl()
@@ -219,6 +209,7 @@ private:
     CFRunLoopRef runloop_;
     boost::mutex runloop_mutex_;
     boost::condition_variable runloop_cond_;
+
     boost::mutex work_thread_mutex_;
     boost::thread work_thread_;
 
