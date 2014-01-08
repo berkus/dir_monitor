@@ -39,6 +39,21 @@ struct dir_monitor_event
     event_type type;
 };
 
+inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
+{
+    os << "dir_monitor_event "
+        << [](int type) { switch(type) {
+            case boost::asio::dir_monitor_event::added: return "ADDED";
+            case boost::asio::dir_monitor_event::removed: return "REMOVED";
+            case boost::asio::dir_monitor_event::modified: return "MODIFIED";
+            case boost::asio::dir_monitor_event::renamed_old_name: return "RENAMED (OLD NAME)";
+            case boost::asio::dir_monitor_event::renamed_new_name: return "RENAMED (NEW NAME)";
+            case boost::asio::dir_monitor_event::recursive_rescan: return "RESCAN DIR";
+            default: return "UKNOWN";
+        } } (ev.type) << " " << ev.path;
+    return os;
+}
+
 template <typename Service>
 class basic_dir_monitor
     : public boost::asio::basic_io_object<Service>
