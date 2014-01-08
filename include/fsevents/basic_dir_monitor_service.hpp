@@ -137,9 +137,8 @@ public:
     }
 
 private:
-    void shutdown_service()
-    {
-    }
+    void shutdown_service() override
+    {}
 
     boost::asio::io_service async_monitor_io_service_;
     boost::scoped_ptr<boost::asio::io_service::work> async_monitor_work_;
