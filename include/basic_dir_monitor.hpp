@@ -6,8 +6,9 @@
 //
 #pragma once
 
-#include <boost/asio.hpp> 
-#include <string> 
+#include <boost/asio.hpp>
+#include <boost/filesystem.hpp>
+#include <string>
 
 namespace boost {
 namespace asio {
@@ -27,13 +28,12 @@ struct dir_monitor_event
     dir_monitor_event()
         : type(null) { }
 
-    dir_monitor_event(const std::string &d, const std::string &f, event_type t) 
-        : dirname(d), filename(f), type(t) { } 
+    dir_monitor_event(const boost::filesystem::path &p, event_type t)
+        : path(p), type(t) { }
 
-    std::string dirname; 
-    std::string filename; 
-    event_type type; 
-}; 
+    boost::filesystem::path path;
+    event_type type;
+};
 
 template <typename Service>
 class basic_dir_monitor
