@@ -139,7 +139,7 @@ private:
         if (fsevents_)
         {
             FSEventStreamStop(fsevents_);
-            FSEventStreamUnscheduleFromRunLoop(fsevents_, runloop_, kCFRunLoopDefaultMode);
+            // FSEventStreamUnscheduleFromRunLoop(fsevents_, runloop_, kCFRunLoopDefaultMode);
             FSEventStreamInvalidate(fsevents_);
             FSEventStreamRelease(fsevents_);
         }
