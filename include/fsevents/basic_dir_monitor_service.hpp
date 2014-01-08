@@ -72,17 +72,17 @@ public:
 
     void add_directory(implementation_type &impl, const std::string &dirname)
     {
-        if (!boost::filesystem::is_directory(dirname))
-            throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
+        boost::filesystem::path dir(boost::filesystem::canonical(dirname));
+        if (!boost::filesystem::is_directory(dir))
+            throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dir.native() + " is not a valid directory entry");
 
-        impl->add_directory(dirname);
+        impl->add_directory(dir);
     }
 
     void remove_directory(implementation_type &impl, const std::string &dirname)
     {
-        // Removing the directory from the implementation will automatically close the associated file handle.
-        // Closing the file handle will make kevent() clear corresponding events.
-        impl->remove_directory(dirname);
+        boost::filesystem::path dir(boost::filesystem::canonical(dirname));
+        impl->remove_directory(dir);
     }
 
     /**
