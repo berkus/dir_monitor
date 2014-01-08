@@ -5,18 +5,44 @@
 
 boost::asio::io_service io_service;
 
-void create_file_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void print_fsevents_flags(unsigned flags)
 {
-    std::cout << "Dir monitor event "
-        << [](int type) { switch(type) {
-            case boost::asio::dir_monitor_event::added: return "ADDED";
-            case boost::asio::dir_monitor_event::removed: return "REMOVED";
-            case boost::asio::dir_monitor_event::modified: return "MODIFIED";
-            case boost::asio::dir_monitor_event::renamed_old_name: return "RENAMED (OLD NAME)";
-            case boost::asio::dir_monitor_event::renamed_new_name: return "RENAMED (NEW NAME)";
-            case boost::asio::dir_monitor_event::recursive_rescan: return "RESCAN DIR";
-            default: return "UKNOWN";
-        } } (ev.type) << " " << ev.path << std::endl;
+    std::cout << "Flags " << [](unsigned flags) {
+        std::ostringstream oss;
+        if (flags & kFSEventStreamEventFlagMustScanSubDirs) oss << "MustScanSubDirs,";
+        if (flags & kFSEventStreamEventFlagUserDropped) oss << "UserDropped,";
+        if (flags & kFSEventStreamEventFlagKernelDropped) oss << "KernelDropped,";
+        if (flags & kFSEventStreamEventFlagEventIdsWrapped) oss << "EventIdsWrapped,";
+        if (flags & kFSEventStreamEventFlagHistoryDone) oss << "HistoryDone,";
+        if (flags & kFSEventStreamEventFlagRootChanged) oss << "RootChanged,";
+        if (flags & kFSEventStreamEventFlagMount) oss << "Mount,";
+        if (flags & kFSEventStreamEventFlagUnmount) oss << "Unmount,";
+        if (flags & kFSEventStreamEventFlagItemCreated) oss << "ItemCreated,";
+        if (flags & kFSEventStreamEventFlagItemRemoved) oss << "ItemRemoved,";
+        if (flags & kFSEventStreamEventFlagItemInodeMetaMod) oss << "ItemInodeMetaMod,";
+        if (flags & kFSEventStreamEventFlagItemRenamed) oss << "ItemRenamed,";
+        if (flags & kFSEventStreamEventFlagItemModified) oss << "ItemModified,";
+        if (flags & kFSEventStreamEventFlagItemFinderInfoMod) oss << "ItemFinderInfoMod,";
+        if (flags & kFSEventStreamEventFlagItemChangeOwner) oss << "ItemChangeOwner,";
+        if (flags & kFSEventStreamEventFlagItemXattrMod) oss << "ItemXattrMod,";
+        if (flags & kFSEventStreamEventFlagItemIsFile) oss << "ItemIsFile,";
+        if (flags & kFSEventStreamEventFlagItemIsDir) oss << "ItemIsDir,";
+        if (flags & kFSEventStreamEventFlagItemIsSymlink) oss << "ItemIsSymlink,";
+        return oss.str();
+    }(flags) << std::endl;
+}
+
+void event_handler(boost::asio::dir_monitor& dm, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+{
+    if (ec) {
+        std::cout << "Error code " << ec << std::endl;
+    } else {
+        std::cout << ev << std::endl;
+        // Keep it posted forever.
+        dm.async_monitor([&](const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev) {
+            event_handler(dm, ec, ev);
+        });
+    }
 }
 
 int main()
@@ -25,8 +51,10 @@ int main()
 
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
+    dm.async_monitor([&](const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev) {
+        event_handler(dm, ec, ev);
+    });
 
-    dm.async_monitor(create_file_handler);
+    boost::asio::io_service::work workload(io_service);
     io_service.run();
-    // io_service.reset();
 }
