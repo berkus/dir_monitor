@@ -13,17 +13,21 @@
 namespace boost {
 namespace asio {
 
-struct dir_monitor_event 
-{ 
-    enum event_type 
-    { 
-        null = 0, 
-        added = 1, 
-        removed = 2, 
-        modified = 3, 
-        renamed_old_name = 4, 
-        renamed_new_name = 5 
-    }; 
+struct dir_monitor_event
+{
+    enum event_type
+    {
+        null = 0,
+        added = 1,
+        removed = 2,
+        modified = 3,
+        renamed_old_name = 4,
+        renamed_new_name = 5,
+        /**
+         * In some cases a recursive scan of directory under dirname is required.
+         */
+        recursive_rescan = 6
+    };
 
     dir_monitor_event()
         : type(null) { }
