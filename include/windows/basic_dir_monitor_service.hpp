@@ -111,7 +111,7 @@ public:
         // No smart pointer can be used as the pointer must travel as a completion key 
         // through the I/O completion port module. 
         completion_key *ck = new completion_key(handle, dirname, impl); 
-        iocp_ = CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<unsigned long>(ck), 0); 
+        iocp_ = CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck), 0); 
         if (iocp_ == NULL) 
         { 
             delete ck; 
@@ -210,7 +210,7 @@ private:
             DWORD bytes_transferred; 
             completion_key *ck; 
             OVERLAPPED *overlapped; 
-            BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<unsigned long*>(&ck), &overlapped, INFINITE); 
+            BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE); 
             if (!res) 
             { 
                 DWORD last_error = GetLastError(); 
