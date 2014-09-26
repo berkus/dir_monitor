@@ -94,8 +94,7 @@ public:
 private:
     CFArrayRef make_array(boost::unordered_set<std::string> in)
     {
-        CFArrayCallBacks callbacks;
-        CFMutableArrayRef arr = CFArrayCreateMutable(kCFAllocatorDefault, in.size(), &callbacks);
+        CFMutableArrayRef arr = CFArrayCreateMutable(kCFAllocatorDefault, in.size(), &kCFTypeArrayCallBacks);
         for (auto str : in) {
             CFStringRef cfstr = CFStringCreateWithCString(kCFAllocatorDefault, str.c_str(), kCFStringEncodingUTF8);
             CFArrayAppendValue(arr, cfstr);
