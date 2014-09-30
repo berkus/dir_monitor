@@ -13,6 +13,7 @@
 #include <boost/scoped_ptr.hpp> 
 #include <boost/array.hpp> 
 #include <boost/bimap.hpp> 
+#include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp> 
 #include <boost/system/system_error.hpp> 
 #include <string> 
@@ -37,22 +38,24 @@ public:
     } 
 
     void add_directory(const std::string &dirname) 
-    { 
-        int wd = inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO); 
-        if (wd == -1) 
+    {
+        std::string fullpath = boost::filesystem::canonical(dirname).string();
+        int wd = inotify_add_watch(fd_, fullpath.c_str(), IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
+        if (wd == -1)
         { 
             boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::add_directory: inotify_add_watch failed"); 
             boost::throw_exception(e); 
         } 
 
         boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_); 
-        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname)); 
+        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, fullpath));
     } 
 
     void remove_directory(const std::string &dirname) 
     { 
-        boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_); 
-        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname); 
+        std::string fullpath = boost::filesystem::canonical(dirname).string();
+        boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_);
+        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(fullpath);
         if (it != watch_descriptors_.right.end()) 
         { 
             inotify_rm_watch(fd_, it->second); 
@@ -135,7 +138,7 @@ private:
                 case IN_MOVED_FROM: type = dir_monitor_event::renamed_old_name; break; 
                 case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break; 
                 } 
-                pushback_event(dir_monitor_event(get_dirname(iev->wd) + iev->name, type));
+                pushback_event(dir_monitor_event(get_dirname(iev->wd) + "/" + iev->name, type));
                 pending_read_buffer_.erase(0, sizeof(inotify_event) + iev->len); 
             } 
 
