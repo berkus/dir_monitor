@@ -135,7 +135,7 @@ private:
                 case IN_MOVED_FROM: type = dir_monitor_event::renamed_old_name; break; 
                 case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break; 
                 } 
-                pushback_event(dir_monitor_event(get_dirname(iev->wd), iev->name, type)); 
+                pushback_event(dir_monitor_event(get_dirname(iev->wd) + iev->name, type));
                 pending_read_buffer_.erase(0, sizeof(inotify_event) + iev->len); 
             } 
 
