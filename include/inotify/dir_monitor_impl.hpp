@@ -35,33 +35,48 @@ public:
         inotify_work_thread_(boost::bind(&boost::asio::io_service::run, &inotify_io_service_)), 
         run_(true) 
     { 
-    } 
+    }
 
     void add_directory(const std::string &dirname) 
     {
-        std::string fullpath = boost::filesystem::canonical(dirname).string();
-        int wd = inotify_add_watch(fd_, fullpath.c_str(), IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO);
+        int wd =  inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_MODIFY);
         if (wd == -1)
-        { 
-            boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::add_directory: inotify_add_watch failed"); 
-            boost::throw_exception(e); 
-        } 
+        {
+            boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::add_directory: inotify_add_watch failed");
+            boost::throw_exception(e);
+        }
 
         boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_); 
-        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, fullpath));
+        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
+        lock.unlock();
+        add_sub_directory(dirname);
     } 
 
     void remove_directory(const std::string &dirname) 
     { 
-        std::string fullpath = boost::filesystem::canonical(dirname).string();
         boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_);
-        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(fullpath);
+        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
         if (it != watch_descriptors_.right.end()) 
         { 
             inotify_rm_watch(fd_, it->second); 
             watch_descriptors_.right.erase(it); 
         } 
     } 
+
+    void add_sub_directory(const std::string &dirname)
+    {
+        boost::filesystem::recursive_directory_iterator it(dirname);
+        boost::filesystem::recursive_directory_iterator end;
+        while (it != end)
+        {
+            const auto& dentry = *it;
+            if (dentry.status().type() == boost::filesystem::directory_file)
+            {
+                add_directory(dentry.path().string());
+            }
+            ++it;
+        }
+    }
 
     void destroy() 
     { 
@@ -136,7 +151,13 @@ private:
                 case IN_CREATE: type = dir_monitor_event::added; break; 
                 case IN_DELETE: type = dir_monitor_event::removed; break; 
                 case IN_MOVED_FROM: type = dir_monitor_event::renamed_old_name; break; 
-                case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break; 
+                case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break;
+                case IN_CREATE | IN_ISDIR:
+                    {
+                        type = dir_monitor_event::added;
+                        add_directory(get_dirname(iev->wd) + "/" + iev->name);
+                        break;
+                    }
                 } 
                 pushback_event(dir_monitor_event(get_dirname(iev->wd) + "/" + iev->name, type));
                 pending_read_buffer_.erase(0, sizeof(inotify_event) + iev->len); 
