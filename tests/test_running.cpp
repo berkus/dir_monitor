@@ -5,6 +5,7 @@
 
 boost::asio::io_service io_service;
 
+#if defined(__APPLE__) && defined(__MACH__)
 void print_fsevents_flags(unsigned flags)
 {
     std::cout << "Flags " << [](unsigned flags) {
@@ -31,6 +32,8 @@ void print_fsevents_flags(unsigned flags)
         return oss.str();
     }(flags) << std::endl;
 }
+#endif
+
 
 void event_handler(boost::asio::dir_monitor& dm, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
