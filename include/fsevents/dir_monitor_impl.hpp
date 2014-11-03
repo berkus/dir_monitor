@@ -105,6 +105,11 @@ private:
 
     void start_fsevents()
     {
+        if (dirs_.size() == 0) {
+            fsevents_ = nullptr;
+            return;
+        }
+
         FSEventStreamContext context = {0, this, NULL, NULL, NULL};
         fsevents_ =
             FSEventStreamCreate(
