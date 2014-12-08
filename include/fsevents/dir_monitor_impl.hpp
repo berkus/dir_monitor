@@ -160,8 +160,6 @@ private:
         size_t i;
         char **paths = (char**)eventPaths;
         dir_monitor_impl* impl = (dir_monitor_impl*)clientCallBackInfo;
-        bool rename_old = true;
-
 
         for (i = 0; i < numEvents; ++i)
         {
@@ -178,18 +176,14 @@ private:
             if (eventFlags[i] & kFSEventStreamEventFlagItemModified) {
                 impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::modified));
             }
-            // We assume renames always come in pairs inside a single callback, old name first.
-            // This might be wrong in general, but I haven't seen evidence yet.
             if (eventFlags[i] & kFSEventStreamEventFlagItemRenamed)
             {
-                if (rename_old)
+                if (!boost::filesystem::exists(dir))
                 {
-                    rename_old = false;
                     impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::renamed_old_name));
                 }
                 else
                 {
-                    rename_old = true;
                     impl->pushback_event(dir_monitor_event(dir, dir_monitor_event::renamed_new_name));
                 }
             }
