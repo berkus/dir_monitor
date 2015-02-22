@@ -150,6 +150,7 @@ private:
                 { 
                 case IN_CREATE: type = dir_monitor_event::added; break; 
                 case IN_DELETE: type = dir_monitor_event::removed; break; 
+                case IN_MODIFY: type = dir_monitor_event::modified; break;
                 case IN_MOVED_FROM: type = dir_monitor_event::renamed_old_name; break; 
                 case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break;
                 case IN_CREATE | IN_ISDIR:
