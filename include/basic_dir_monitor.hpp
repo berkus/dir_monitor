@@ -49,7 +49,7 @@ inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
             case boost::asio::dir_monitor_event::renamed_old_name: return "RENAMED (OLD NAME)";
             case boost::asio::dir_monitor_event::renamed_new_name: return "RENAMED (NEW NAME)";
             case boost::asio::dir_monitor_event::recursive_rescan: return "RESCAN DIR";
-            default: return "UKNOWN";
+            default: return "UNKNOWN";
         } } (ev.type) << " " << ev.path;
     return os;
 }
