@@ -6,18 +6,21 @@
 // 
 #pragma once
 
-#include <boost/enable_shared_from_this.hpp> 
 #include <boost/asio.hpp> 
-#include <boost/thread.hpp> 
 #include <boost/bind.hpp> 
-#include <boost/scoped_ptr.hpp> 
-#include <boost/array.hpp> 
 #include <boost/bimap.hpp> 
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp> 
-#include <boost/system/system_error.hpp> 
+#include <boost/system/system_error.hpp>
+
+#include <array>
+#include <condition_variable>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <string> 
-#include <deque> 
+#include <thread>
+
 #include <sys/inotify.h> 
 #include <errno.h> 
 
@@ -25,7 +28,7 @@ namespace boost {
 namespace asio { 
 
 class dir_monitor_impl : 
-    public boost::enable_shared_from_this<dir_monitor_impl> 
+    public std::enable_shared_from_this<dir_monitor_impl>
 { 
 public: 
     dir_monitor_impl() 
@@ -39,14 +42,14 @@ public:
 
     void add_directory(const std::string &dirname) 
     {
-        int wd =  inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_MODIFY);
+        int wd = inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
         if (wd == -1)
         {
             boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::add_directory: inotify_add_watch failed");
             boost::throw_exception(e);
         }
 
-        boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_); 
+        std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
         lock.unlock();
         add_sub_directory(dirname);
@@ -54,7 +57,7 @@ public:
 
     void remove_directory(const std::string &dirname) 
     { 
-        boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_);
+    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
         if (it != watch_descriptors_.right.end()) 
         { 
@@ -84,14 +87,14 @@ public:
         inotify_io_service_.stop(); 
         inotify_work_thread_.join(); 
 
-        boost::unique_lock<boost::mutex> lock(events_mutex_); 
+        std::unique_lock<std::mutex> lock(events_mutex_);
         run_ = false; 
         events_cond_.notify_all(); 
     } 
 
     dir_monitor_event popfront_event(boost::system::error_code &ec) 
     { 
-        boost::unique_lock<boost::mutex> lock(events_mutex_); 
+    	std::unique_lock<std::mutex> lock(events_mutex_);
         while (run_ && events_.empty()) 
             events_cond_.wait(lock); 
         dir_monitor_event ev; 
@@ -108,7 +111,7 @@ public:
 
     void pushback_event(dir_monitor_event ev) 
     { 
-        boost::unique_lock<boost::mutex> lock(events_mutex_); 
+    	std::unique_lock<std::mutex> lock(events_mutex_);
         if (run_) 
         { 
             events_.push_back(ev); 
@@ -175,24 +178,24 @@ private:
 
     std::string get_dirname(int wd) 
     { 
-        boost::unique_lock<boost::mutex> lock(watch_descriptors_mutex_); 
-        watch_descriptors_t::left_map::iterator it = watch_descriptors_.left.find(wd); 
-        return it != watch_descriptors_.left.end() ? it->second : ""; 
+    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
+        watch_descriptors_t::left_map::iterator it = watch_descriptors_.left.find(wd);
+        return it != watch_descriptors_.left.end() ? it->second : "";
     } 
 
     int fd_; 
-    boost::asio::io_service inotify_io_service_; 
-    boost::asio::posix::stream_descriptor stream_descriptor_; 
-    boost::scoped_ptr<boost::asio::io_service::work> inotify_work_; 
-    boost::thread inotify_work_thread_; 
-    boost::array<char, 4096> read_buffer_; 
-    std::string pending_read_buffer_; 
-    boost::mutex watch_descriptors_mutex_; 
-    typedef boost::bimap<int, std::string> watch_descriptors_t; 
-    watch_descriptors_t watch_descriptors_; 
-    boost::mutex events_mutex_; 
-    boost::condition_variable events_cond_; 
-    bool run_; 
+    boost::asio::io_service inotify_io_service_;
+    boost::asio::posix::stream_descriptor stream_descriptor_;
+    std::unique_ptr<boost::asio::io_service::work> inotify_work_;
+    std::thread inotify_work_thread_;
+    std::array<char, 4096> read_buffer_;
+    std::string pending_read_buffer_;
+    std::mutex watch_descriptors_mutex_;
+    typedef boost::bimap<int, std::string> watch_descriptors_t;
+    watch_descriptors_t watch_descriptors_;
+    std::mutex events_mutex_;
+    std::condition_variable events_cond_;
+    bool run_;
     std::deque<dir_monitor_event> events_; 
 }; 
 
