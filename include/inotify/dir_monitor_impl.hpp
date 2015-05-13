@@ -163,7 +163,7 @@ private:
                         break;
                     }
                 } 
-                pushback_event(dir_monitor_event(get_dirname(iev->wd) + "/" + iev->name, type));
+                pushback_event(dir_monitor_event(boost::filesystem::path(get_dirname(iev->wd)) / iev->name, type));
                 pending_read_buffer_.erase(0, sizeof(inotify_event) + iev->len); 
             } 
 
