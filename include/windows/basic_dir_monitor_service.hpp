@@ -252,7 +252,7 @@ private:
                             case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break; 
                             case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break; 
                             } 
-                            impl->pushback_event(dir_monitor_event(ck->dirname, to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type)); 
+                            impl->pushback_event(dir_monitor_event(to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type)); 
                             offset += fni->NextEntryOffset; 
                         } 
                         while (fni->NextEntryOffset); 
