@@ -13,7 +13,7 @@
 #  include "windows/basic_dir_monitor_service.hpp"
 #elif BOOST_OS_LINUX
 #  include "inotify/basic_dir_monitor_service.hpp"
-#elif BOOST_OS_MAC
+#elif BOOST_OS_MACOS
 #  include "fsevents/basic_dir_monitor_service.hpp"
 #elif BOOST_OS_BSD
 #  include "kqueue/basic_dir_monitor_service.hpp"
