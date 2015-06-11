@@ -7,13 +7,15 @@
 #pragma once
 
 #include "basic_dir_monitor.hpp"
-#if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
+#include <boost/predef/os.h>
+
+#if BOOST_OS_WINDOWS
 #  include "windows/basic_dir_monitor_service.hpp"
-#elif defined(linux) || defined(__linux) || defined(__linux__) || defined(__GNU__) || defined(__GLIBC__)
+#elif BOOST_OS_LINUX
 #  include "inotify/basic_dir_monitor_service.hpp"
-#elif defined(__APPLE__) && defined(__MACH__)
+#elif BOOST_OS_MACOS
 #  include "fsevents/basic_dir_monitor_service.hpp"
-#elif defined(__FreeBSD__)
+#elif BOOST_OS_BSD
 #  include "kqueue/basic_dir_monitor_service.hpp"
 #else
 #  error "Platform not supported."

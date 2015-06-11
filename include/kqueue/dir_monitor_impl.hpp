@@ -187,18 +187,18 @@ private:
                     (boost::filesystem::is_regular_file(itn->second.path()) and boost::filesystem::is_regular_file(ito->second.path()) and
                     boost::filesystem::file_size(itn->second.path()) != boost::filesystem::file_size(ito->second.path())))
                 {
-                    pushback_event(dir_monitor_event(dir, itn->second.path().filename().native(), dir_monitor_event::modified));
+                    pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(), dir_monitor_event::modified));
                 }
                 old_entries.erase(ito);
             }
             else
             {
-                pushback_event(dir_monitor_event(dir, itn->second.path().filename().native(), dir_monitor_event::added));
+                pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(), dir_monitor_event::added));
             }
         }
         for (dir_entry_map::iterator it = old_entries.begin(); it != old_entries.end(); ++it)
         {
-            pushback_event(dir_monitor_event(dir, it->second.path().filename().native(), dir_monitor_event::removed));
+            pushback_event(dir_monitor_event(boost::filesystem::path(dir) / it->second.path().filename(), dir_monitor_event::removed));
         }
     }
 
