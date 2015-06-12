@@ -52,32 +52,33 @@ public:
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
         lock.unlock();
-        add_sub_directory(dirname);
+        check_sub_directory(dirname, true);
     }
 
     void remove_directory(const std::string &dirname)
     {
-    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
+        std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
         if (it != watch_descriptors_.right.end())
         {
             inotify_rm_watch(fd_, it->second);
             watch_descriptors_.right.erase(it);
+            lock.unlock();
+            check_sub_directory(dirname, false);
         }
     }
 
-    void add_sub_directory(const std::string &dirname)
+    void check_sub_directory(const std::string &dirname, bool add_sub_directory)
     {
-        boost::filesystem::recursive_directory_iterator it(dirname);
-        boost::filesystem::recursive_directory_iterator end;
-        while (it != end)
-        {
-            const auto& dentry = *it;
-            if (dentry.status().type() == boost::filesystem::directory_file)
-            {
-                add_directory(dentry.path().string());
+        boost::filesystem::directory_iterator end;
+        for (boost::filesystem::directory_iterator iter(dirname); iter != end; ++iter) {
+            if (boost::filesystem::is_directory(*iter)) {
+                if (add_sub_directory) {
+                    add_directory((*iter).path().string());
+                } else {
+                    remove_directory((*iter).path().string());
+                }
             }
-            ++it;
         }
     }
 
@@ -94,7 +95,7 @@ public:
 
     dir_monitor_event popfront_event(boost::system::error_code &ec)
     {
-    	std::unique_lock<std::mutex> lock(events_mutex_);
+        std::unique_lock<std::mutex> lock(events_mutex_);
         while (run_ && events_.empty())
             events_cond_.wait(lock);
         dir_monitor_event ev;
@@ -111,7 +112,7 @@ public:
 
     void pushback_event(dir_monitor_event ev)
     {
-    	std::unique_lock<std::mutex> lock(events_mutex_);
+        std::unique_lock<std::mutex> lock(events_mutex_);
         if (run_)
         {
             events_.push_back(ev);
@@ -178,7 +179,7 @@ private:
 
     std::string get_dirname(int wd)
     {
-    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
+        std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::left_map::iterator it = watch_descriptors_.left.find(wd);
         return it != watch_descriptors_.left.end() ? it->second : "";
     }
