@@ -30,6 +30,7 @@ public:
     dir_monitor_impl()
         : run_(true)
         , work_thread_(&boost::asio::dir_monitor_impl::work_thread, this)
+        , fsevents_(nullptr)
     {}
 
     ~dir_monitor_impl()
