@@ -75,7 +75,11 @@ public:
         for (boost::filesystem::directory_iterator iter(dirname); iter != end; ++iter) {
             if (boost::filesystem::is_directory(*iter)) {
                 if (add_sub_directory) {
-                    add_directory((*iter).path().string());
+                    try {
+                        add_directory((*iter).path().string());
+                    } catch (const std::exception&) {
+                        continue;
+                    }
                 } else {
                     remove_directory((*iter).path().string());
                 }
