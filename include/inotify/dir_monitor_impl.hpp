@@ -33,16 +33,17 @@ class dir_monitor_impl :
 public:
     dir_monitor_impl()
         : fd_(init_fd()),
-        stream_descriptor_(inotify_io_service_, fd_),
-        inotify_work_(new boost::asio::io_service::work(inotify_io_service_)),
-        inotify_work_thread_(boost::bind(&boost::asio::io_service::run, &inotify_io_service_)),
+        inotify_io_service_(new boost::asio::io_service()),
+        stream_descriptor_(new boost::asio::posix::stream_descriptor(*inotify_io_service_, fd_)),
+        inotify_work_(new boost::asio::io_service::work(*inotify_io_service_)),
+        inotify_work_thread_(boost::bind(&boost::asio::io_service::run, inotify_io_service_.get())),
         run_(true)
     {
     }
 
     void add_directory(const std::string &dirname)
     {
-        int wd = inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
+        int wd = inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO);
         if (wd == -1)
         {
             boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::add_directory: inotify_add_watch failed");
@@ -74,7 +75,11 @@ public:
         for (boost::filesystem::directory_iterator iter(dirname); iter != end; ++iter) {
             if (boost::filesystem::is_directory(*iter)) {
                 if (add_sub_directory) {
-                    add_directory((*iter).path().string());
+                    try {
+                        add_directory((*iter).path().string());
+                    } catch (const std::exception&) {
+                        continue;
+                    }
                 } else {
                     remove_directory((*iter).path().string());
                 }
@@ -85,8 +90,11 @@ public:
     void destroy()
     {
         inotify_work_.reset();
-        inotify_io_service_.stop();
+        stream_descriptor_.reset();
+        inotify_io_service_->stop();
         inotify_work_thread_.join();
+        stream_descriptor_.reset();
+        inotify_io_service_->stop();
 
         std::unique_lock<std::mutex> lock(events_mutex_);
         run_ = false;
@@ -135,7 +143,7 @@ private:
 public:
     void begin_read()
     {
-        stream_descriptor_.async_read_some(boost::asio::buffer(read_buffer_),
+        stream_descriptor_->async_read_some(boost::asio::buffer(read_buffer_),
             boost::bind(&dir_monitor_impl::end_read, shared_from_this(),
             boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
     }
@@ -154,7 +162,7 @@ private:
                 {
                 case IN_CREATE: type = dir_monitor_event::added; break;
                 case IN_DELETE: type = dir_monitor_event::removed; break;
-                case IN_MODIFY: type = dir_monitor_event::modified; break;
+                case IN_CLOSE_WRITE: type = dir_monitor_event::modified; break;
                 case IN_MOVED_FROM: type = dir_monitor_event::renamed_old_name; break;
                 case IN_MOVED_TO: type = dir_monitor_event::renamed_new_name; break;
                 case IN_CREATE | IN_ISDIR:
@@ -185,8 +193,8 @@ private:
     }
 
     int fd_;
-    boost::asio::io_service inotify_io_service_;
-    boost::asio::posix::stream_descriptor stream_descriptor_;
+    std::unique_ptr<boost::asio::io_service> inotify_io_service_;
+    std::unique_ptr<boost::asio::posix::stream_descriptor> stream_descriptor_;
     std::unique_ptr<boost::asio::io_service::work> inotify_work_;
     std::thread inotify_work_thread_;
     std::array<char, 4096> read_buffer_;
