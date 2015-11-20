@@ -1,24 +1,18 @@
 language: cpp
 compiler:
   - gcc
-install:
-  - sudo apt-add-repository -y ppa:ubuntu-toolchain-r/test
-# - sudo apt-add-repository -y "deb http://llvm.org/apt/precise/ llvm-toolchain-precise-3.6 main"
-  - sudo apt-add-repository -y ppa:boost-latest/ppa
-# - wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key | sudo apt-key add -
-  - 
-  - mkdir cmake_temp
-  - cd cmake_temp
-  - wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc1-Linux-x86_64.tar.gz
-  - tar xzf cmake-3.3.0-rc1-Linux-x86_64.tar.gz
-  - sudo cp -r cmake-3.3.0-rc1-Linux-x86_64/* /usr
-  - cd ..
-  -
-  - sudo apt-get update
-  - sudo apt-get install libboost1.55 g++-5 gcc-5 build-essential
-# - sudo apt-get install clang-3.6
-  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 80 --slave /usr/bin/g++ g++ /usr/bin/g++-5
-# - sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.6 80 --slave /usr/bin/clang++ clang++ /usr/bin/clang++-3.6 --slave /usr/local/clang++-3.4 clang++ /usr/bin/clang++-3.6
+addons:
+  apt:
+    sources:
+    - boost-latest
+    - ubuntu-toolchain-r-test
+    packages:
+    - cmake
+    - libboost1.55
+    - g++-5
+    - gcc-5
+    - build-essential
+sudo: false
 script:
   - cmake .
   - make

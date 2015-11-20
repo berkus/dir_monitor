@@ -11,7 +11,7 @@
 
 #if BOOST_OS_WINDOWS
 #  include "windows/basic_dir_monitor_service.hpp"
-#elif BOOST_OS_LINUX
+#elif (BOOST_OS_LINUX || BOOST_OS_ANDROID)
 #  include "inotify/basic_dir_monitor_service.hpp"
 #elif BOOST_OS_MACOS
 #  include "fsevents/basic_dir_monitor_service.hpp"
