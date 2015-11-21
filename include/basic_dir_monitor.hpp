@@ -35,14 +35,9 @@ struct dir_monitor_event
     dir_monitor_event(const boost::filesystem::path &p, event_type t)
         : path(p), type(t) { }
 
-    boost::filesystem::path path;
-    event_type type;
-};
-
-inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
-{
-    os << "dir_monitor_event "
-        << [](int type) { switch(type) {
+    const char* type_cstr() const
+    {
+        switch(type) {
             case boost::asio::dir_monitor_event::added: return "ADDED";
             case boost::asio::dir_monitor_event::removed: return "REMOVED";
             case boost::asio::dir_monitor_event::modified: return "MODIFIED";
@@ -50,7 +45,16 @@ inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
             case boost::asio::dir_monitor_event::renamed_new_name: return "RENAMED (NEW NAME)";
             case boost::asio::dir_monitor_event::recursive_rescan: return "RESCAN DIR";
             default: return "UNKNOWN";
-        } } (ev.type) << " " << ev.path;
+        }
+    }
+
+    boost::filesystem::path path;
+    event_type type;
+};
+
+inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
+{
+    os << "dir_monitor_event " << ev.type_cstr() << " " << ev.path;
     return os;
 }
 
@@ -66,31 +70,31 @@ public:
 
     void add_directory(const std::string &dirname)
     {
-        this->service.add_directory(this->implementation, dirname);
+        this->get_service().add_directory(this->get_implementation(), dirname);
     }
 
     void remove_directory(const std::string &dirname)
     {
-        this->service.remove_directory(this->implementation, dirname);
+        this->get_service().remove_directory(this->get_implementation(), dirname);
     }
 
     dir_monitor_event monitor()
     {
         boost::system::error_code ec;
-        dir_monitor_event ev = this->service.monitor(this->implementation, ec);
+        dir_monitor_event ev = this->get_service().monitor(this->get_implementation(), ec);
         boost::asio::detail::throw_error(ec);
         return ev;
     }
 
     dir_monitor_event monitor(boost::system::error_code &ec)
     {
-        return this->service.monitor(this->implementation, ec);
+        return this->get_service().monitor(this->get_implementation(), ec);
     }
 
     template <typename Handler>
     void async_monitor(Handler handler)
     {
-        this->service.async_monitor(this->implementation, handler);
+        this->get_service().async_monitor(this->get_implementation(), handler);
     }
 };
 

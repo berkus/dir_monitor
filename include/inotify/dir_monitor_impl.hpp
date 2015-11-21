@@ -33,9 +33,10 @@ class dir_monitor_impl :
 public:
     dir_monitor_impl()
         : fd_(init_fd()),
-        stream_descriptor_(inotify_io_service_, fd_),
-        inotify_work_(new boost::asio::io_service::work(inotify_io_service_)),
-        inotify_work_thread_(boost::bind(&boost::asio::io_service::run, &inotify_io_service_)),
+        inotify_io_service_(new boost::asio::io_service()),
+        stream_descriptor_(new boost::asio::posix::stream_descriptor(*inotify_io_service_, fd_)),
+        inotify_work_(new boost::asio::io_service::work(*inotify_io_service_)),
+        inotify_work_thread_(boost::bind(&boost::asio::io_service::run, inotify_io_service_.get())),
         run_(true)
     {
     }
@@ -52,40 +53,48 @@ public:
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
         lock.unlock();
-        add_sub_directory(dirname);
+        check_sub_directory(dirname, true);
     }
 
     void remove_directory(const std::string &dirname)
     {
-    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
+        std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
         if (it != watch_descriptors_.right.end())
         {
             inotify_rm_watch(fd_, it->second);
             watch_descriptors_.right.erase(it);
+            lock.unlock();
+            check_sub_directory(dirname, false);
         }
     }
 
-    void add_sub_directory(const std::string &dirname)
+    void check_sub_directory(const std::string &dirname, bool add_sub_directory)
     {
-        boost::filesystem::recursive_directory_iterator it(dirname);
-        boost::filesystem::recursive_directory_iterator end;
-        while (it != end)
-        {
-            const auto& dentry = *it;
-            if (dentry.status().type() == boost::filesystem::directory_file)
-            {
-                add_directory(dentry.path().string());
+        boost::filesystem::directory_iterator end;
+        for (boost::filesystem::directory_iterator iter(dirname); iter != end; ++iter) {
+            if (boost::filesystem::is_directory(*iter)) {
+                if (add_sub_directory) {
+                    try {
+                        add_directory((*iter).path().string());
+                    } catch (const std::exception&) {
+                        continue;
+                    }
+                } else {
+                    remove_directory((*iter).path().string());
+                }
             }
-            ++it;
         }
     }
 
     void destroy()
     {
         inotify_work_.reset();
-        inotify_io_service_.stop();
+        stream_descriptor_.reset();
+        inotify_io_service_->stop();
         inotify_work_thread_.join();
+        stream_descriptor_.reset();
+        inotify_io_service_->stop();
 
         std::unique_lock<std::mutex> lock(events_mutex_);
         run_ = false;
@@ -94,7 +103,7 @@ public:
 
     dir_monitor_event popfront_event(boost::system::error_code &ec)
     {
-    	std::unique_lock<std::mutex> lock(events_mutex_);
+        std::unique_lock<std::mutex> lock(events_mutex_);
         while (run_ && events_.empty())
             events_cond_.wait(lock);
         dir_monitor_event ev;
@@ -111,7 +120,7 @@ public:
 
     void pushback_event(dir_monitor_event ev)
     {
-    	std::unique_lock<std::mutex> lock(events_mutex_);
+        std::unique_lock<std::mutex> lock(events_mutex_);
         if (run_)
         {
             events_.push_back(ev);
@@ -134,7 +143,7 @@ private:
 public:
     void begin_read()
     {
-        stream_descriptor_.async_read_some(boost::asio::buffer(read_buffer_),
+        stream_descriptor_->async_read_some(boost::asio::buffer(read_buffer_),
             boost::bind(&dir_monitor_impl::end_read, shared_from_this(),
             boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
     }
@@ -178,14 +187,14 @@ private:
 
     std::string get_dirname(int wd)
     {
-    	std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
+        std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::left_map::iterator it = watch_descriptors_.left.find(wd);
         return it != watch_descriptors_.left.end() ? it->second : "";
     }
 
     int fd_;
-    boost::asio::io_service inotify_io_service_;
-    boost::asio::posix::stream_descriptor stream_descriptor_;
+    std::unique_ptr<boost::asio::io_service> inotify_io_service_;
+    std::unique_ptr<boost::asio::posix::stream_descriptor> stream_descriptor_;
     std::unique_ptr<boost::asio::io_service::work> inotify_work_;
     std::thread inotify_work_thread_;
     std::array<char, 4096> read_buffer_;
