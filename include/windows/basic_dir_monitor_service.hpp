@@ -207,15 +207,24 @@ private:
     {
         while (running())
         {
-            DWORD bytes_transferred;
-            completion_key *ck;
-            OVERLAPPED *overlapped;
+            DWORD bytes_transferred = 0;
+            completion_key *ck = nullptr;
+            OVERLAPPED *overlapped = nullptr;
             BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE);
             if (!res)
             {
                 DWORD last_error = GetLastError();
-                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
-                boost::throw_exception(e);
+                switch (last_error)
+                {
+                    case ERROR_OPERATION_ABORTED:
+                        //  TODO: logging or callback
+                        break;
+                    default:
+                    {
+                        boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
+                        boost::throw_exception(e);
+                    }
+                }
             }
 
             if (ck)
