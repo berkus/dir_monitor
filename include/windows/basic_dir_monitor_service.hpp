@@ -207,67 +207,83 @@ private:
     {
         while (running())
         {
-            DWORD bytes_transferred;
-            completion_key *ck;
-            OVERLAPPED *overlapped;
-            BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE);
-            if (!res)
+            try
             {
-                DWORD last_error = GetLastError();
-                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
-                boost::throw_exception(e);
-            }
-
-            if (ck)
-            {
-                // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
-                // The completion key must be deleted then as it won't be used anymore.
-                if (!bytes_transferred) {
-                    delete ck;
-                }
-                else
+                DWORD bytes_transferred = 0;
+                completion_key *ck = nullptr;
+                OVERLAPPED *overlapped = nullptr;
+                BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE);
+                if (!res)
                 {
-                    // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
-                    // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
-                    // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
-                    implementation_type impl = ck->impl.lock();
-
-                    // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
-                    if (!impl) {
-                        delete ck;
-                    }
-                    else
+                    DWORD last_error = GetLastError();
+                    switch (last_error)
                     {
-                        DWORD offset = 0;
-                        PFILE_NOTIFY_INFORMATION fni;
-                        do
+                        case ERROR_OPERATION_ABORTED:
+                            //  TODO: logging or callback
+                            break;
+                        default:
                         {
-                            fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
-                            dir_monitor_event::event_type type = dir_monitor_event::null;
-                            switch (fni->Action)
-                            {
-                            case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
-                            case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
-                            case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
-                            case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                            case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                            }
-                            impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
-                            offset += fni->NextEntryOffset;
-                        }
-                        while (fni->NextEntryOffset);
-
-                        ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
-                        BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
-                        if (!res)
-                        {
-                            delete ck;
-                            DWORD last_error = GetLastError();
-                            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
+                            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
                             boost::throw_exception(e);
                         }
                     }
                 }
+
+                if (ck)
+                {
+                    // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
+                    // The completion key must be deleted then as it won't be used anymore.
+                    if (!bytes_transferred) {
+                        delete ck;
+                    }
+                    else
+                    {
+                        // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
+                        // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
+                        // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
+                        implementation_type impl = ck->impl.lock();
+
+                        // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
+                        if (!impl) {
+                            delete ck;
+                        }
+                        else
+                        {
+                            DWORD offset = 0;
+                            PFILE_NOTIFY_INFORMATION fni;
+                            do
+                            {
+                                fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
+                                dir_monitor_event::event_type type = dir_monitor_event::null;
+                                switch (fni->Action)
+                                {
+                                case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
+                                case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
+                                case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
+                                case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                                case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
+                                }
+                                impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                                offset += fni->NextEntryOffset;
+                            }
+                            while (fni->NextEntryOffset);
+
+                            ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
+                            BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
+                            if (!res)
+                            {
+                                delete ck;
+                                DWORD last_error = GetLastError();
+                                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
+                                boost::throw_exception(e);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (const boost::system::system_error&)
+            {
+                //  TODO: logging or callback
             }
         }
     }
