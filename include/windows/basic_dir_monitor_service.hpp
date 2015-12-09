@@ -24,6 +24,44 @@
 namespace boost {
 namespace asio {
 
+namespace helper {
+
+        void throw_system_error_if(bool condition, const std::string& msg)
+        {
+            if (condition)
+            {
+                DWORD last_error = GetLastError();
+                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
+                boost::throw_exception(e);
+            }
+        }
+
+        std::string to_utf8(WCHAR *filename, DWORD length)
+        {
+            int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
+
+            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
+
+            char buffer[1024];
+            boost::scoped_array<char> dynbuffer;
+            if (size > sizeof(buffer))
+            {
+                dynbuffer.reset(new char[size]);
+                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
+            }
+            else
+            {
+                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, buffer, sizeof(buffer), NULL, NULL);
+            }
+
+            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
+
+
+            return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
+        }
+
+}
+
 template <typename DirMonitorImplementation = dir_monitor_impl>
 class basic_dir_monitor_service
     : public boost::asio::io_service::service
@@ -101,12 +139,7 @@ public:
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
 
         HANDLE handle = CreateFileA(dirname.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
-        if (handle == INVALID_HANDLE_VALUE)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(INVALID_HANDLE_VALUE == handle, "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
 
         // No smart pointer can be used as the pointer must travel as a completion key
         // through the I/O completion port module.
@@ -194,12 +227,8 @@ private:
     HANDLE init_iocp()
     {
         HANDLE iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-        if (iocp == NULL)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::init_iocp: CreateIoCompletionPort failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(iocp == NULL, "boost::asio::basic_dir_monitor_service::init_iocp: CreateIoCompletionPort failed");
+
         return iocp;
     }
 
@@ -210,13 +239,7 @@ private:
             DWORD bytes_transferred;
             completion_key *ck;
             OVERLAPPED *overlapped;
-            BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE);
-            if (!res)
-            {
-                DWORD last_error = GetLastError();
-                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
-                boost::throw_exception(e);
-            }
+            helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
 
             if (ck)
             {
@@ -252,7 +275,7 @@ private:
                             case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
                             case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
                             }
-                            impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                            impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
                             offset += fni->NextEntryOffset;
                         }
                         while (fni->NextEntryOffset);
@@ -287,45 +310,8 @@ private:
 
         // By setting the third paramter to 0 GetQueuedCompletionStatus() will return with a null pointer as the completion key.
         // The work thread won't do anything except checking if it should continue to run. As run_ is set to false it will stop.
-        BOOL res = PostQueuedCompletionStatus(iocp_, 0, 0, NULL);
-        if (!res)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
-            boost::throw_exception(e);
-        }
-    }
 
-    std::string to_utf8(WCHAR *filename, DWORD length)
-    {
-        int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
-        if (!size)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
-            boost::throw_exception(e);
-        }
-
-        char buffer[1024];
-        boost::scoped_array<char> dynbuffer;
-        if (size > sizeof(buffer))
-        {
-            dynbuffer.reset(new char[size]);
-            size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
-        }
-        else
-        {
-            size = WideCharToMultiByte(CP_UTF8, 0, filename, length, buffer, sizeof(buffer), NULL, NULL);
-        }
-
-        if (!size)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
-            boost::throw_exception(e);
-        }
-
-        return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
+		helper::throw_system_error_if(TRUE == PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
     HANDLE iocp_;
