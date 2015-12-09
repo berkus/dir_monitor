@@ -34,6 +34,19 @@ namespace helper {
                 boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
                 boost::throw_exception(e);
             }
+
+        }
+
+        template<typename C>
+        void throw_system_error_if(bool condition, const std::string& msg, C *c)
+        {
+            if (condition)
+            {
+                if(c) delete c;
+                DWORD last_error = GetLastError();
+                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
+                boost::throw_exception(e);
+            }
         }
 
         std::string to_utf8(WCHAR *filename, DWORD length)
@@ -88,6 +101,7 @@ public:
 
     explicit basic_dir_monitor_service(boost::asio::io_service &io_service)
         : boost::asio::io_service::service(io_service),
+        thread_exception_ptr_(nullptr),
         iocp_(init_iocp()),
         run_(true),
         work_thread_(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::work_thread, this),
@@ -144,24 +158,12 @@ public:
         // No smart pointer can be used as the pointer must travel as a completion key
         // through the I/O completion port module.
         completion_key *ck = new completion_key(handle, dirname, impl);
-        iocp_ = CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck), 0);
-        if (iocp_ == NULL)
-        {
-            delete ck;
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck), 0), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed", ck);
+
 
         DWORD bytes_transferred; // ignored
-        BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
-        if (!res)
-        {
-            delete ck;
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed", ck);
+
 
         impl->add_directory(dirname, ck->handle);
     }
@@ -236,60 +238,66 @@ private:
     {
         while (running())
         {
-            DWORD bytes_transferred;
-            completion_key *ck;
-            OVERLAPPED *overlapped;
-            helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
-
-            if (ck)
+            try
             {
-                // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
-                // The completion key must be deleted then as it won't be used anymore.
-                if (!bytes_transferred) {
+                work();
+            }
+            catch (...)
+            {
+                thread_exception_ptr_ = std::current_exception();
+                this->get_io_service().post(boost::bind(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::throw_me, this));
+            }
+        }
+    }
+
+    void work()
+    {
+        DWORD bytes_transferred;
+        completion_key *ck = nullptr;
+        OVERLAPPED *overlapped = nullptr;
+
+        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
+
+        if (ck)
+        {
+            // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
+            // The completion key must be deleted then as it won't be used anymore.
+            if (!bytes_transferred) {
+                delete ck;
+            }
+            else
+            {
+                // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
+                // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
+                // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
+                implementation_type impl = ck->impl.lock();
+
+                // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
+                if (!impl) {
                     delete ck;
                 }
                 else
                 {
-                    // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
-                    // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
-                    // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
-                    implementation_type impl = ck->impl.lock();
-
-                    // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
-                    if (!impl) {
-                        delete ck;
-                    }
-                    else
+                    DWORD offset = 0;
+                    PFILE_NOTIFY_INFORMATION fni;
+                    do
                     {
-                        DWORD offset = 0;
-                        PFILE_NOTIFY_INFORMATION fni;
-                        do
+                        fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
+                        dir_monitor_event::event_type type = dir_monitor_event::null;
+                        switch (fni->Action)
                         {
-                            fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
-                            dir_monitor_event::event_type type = dir_monitor_event::null;
-                            switch (fni->Action)
-                            {
-                            case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
-                            case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
-                            case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
-                            case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                            case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                            }
-                            impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
-                            offset += fni->NextEntryOffset;
+                        case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
+                        case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
+                        case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
+                        case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                        case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
                         }
-                        while (fni->NextEntryOffset);
+                        impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                        offset += fni->NextEntryOffset;
+                    } while (fni->NextEntryOffset);
 
-                        ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
-                        BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
-                        if (!res)
-                        {
-                            delete ck;
-                            DWORD last_error = GetLastError();
-                            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
-                            boost::throw_exception(e);
-                        }
-                    }
+                    ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
+                    helper::throw_system_error_if(!ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed", ck);
                 }
             }
         }
@@ -300,6 +308,11 @@ private:
         // Access to run_ is sychronized with stop_work_thread().
         boost::mutex::scoped_lock lock(work_thread_mutex_);
         return run_;
+    }
+
+    void throw_me()
+    {
+        if (thread_exception_ptr_) std::rethrow_exception(thread_exception_ptr_);
     }
 
     void stop_work_thread()
@@ -314,6 +327,7 @@ private:
 		helper::throw_system_error_if(TRUE == PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
+    std::exception_ptr thread_exception_ptr_;
     HANDLE iocp_;
     boost::mutex work_thread_mutex_;
     bool run_;
