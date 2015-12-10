@@ -37,12 +37,12 @@ namespace helper {
 
         }
 
-        template<typename C>
-        void throw_system_error_if(bool condition, const std::string& msg, C *c)
+        template<typename T>
+        void throw_system_error_if(bool condition, const std::string& msg, T *p)
         {
             if (condition)
             {
-                if(c) delete c;
+                if(p) delete p;
                 DWORD last_error = GetLastError();
                 boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
                 boost::throw_exception(e);
@@ -101,7 +101,7 @@ public:
 
     explicit basic_dir_monitor_service(boost::asio::io_service &io_service)
         : boost::asio::io_service::service(io_service),
-        thread_exception_ptr_(nullptr),
+        last_work_thread_exception_ptr_(nullptr),
         iocp_(init_iocp()),
         run_(true),
         work_thread_(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::work_thread, this),
@@ -244,15 +244,15 @@ private:
             }
             catch (...)
             {
-                thread_exception_ptr_ = std::current_exception();
-                this->get_io_service().post(boost::bind(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::throw_me, this));
+                last_work_thread_exception_ptr_ = std::current_exception();
+                this->get_io_service().post(boost::bind(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::throw_work_exception_handler, this));
             }
         }
     }
 
     void work()
     {
-        DWORD bytes_transferred;
+        DWORD bytes_transferred = 0;
         completion_key *ck = nullptr;
         OVERLAPPED *overlapped = nullptr;
 
@@ -310,9 +310,10 @@ private:
         return run_;
     }
 
-    void throw_me()
+    void throw_work_exception_handler()
     {
-        if (thread_exception_ptr_) std::rethrow_exception(thread_exception_ptr_);
+        if (last_work_thread_exception_ptr_)
+            std::rethrow_exception(last_work_thread_exception_ptr_);
     }
 
     void stop_work_thread()
@@ -327,7 +328,7 @@ private:
 		helper::throw_system_error_if(TRUE == PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
-    std::exception_ptr thread_exception_ptr_;
+    std::exception_ptr last_work_thread_exception_ptr_;
     HANDLE iocp_;
     boost::mutex work_thread_mutex_;
     bool run_;
