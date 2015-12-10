@@ -4,7 +4,12 @@
 # minimum 3.1 for target_compile_features: https://cmake.org/cmake/help/v3.1/command/target_compile_features.html
 # minimum 3.0 for target_include_directories: https://cmake.org/cmake/help/v3.0/command/target_include_directories.html
 cmake_minimum_required(VERSION 3.1)
-include(Dart)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON) # Use the FOLDER target property to organize targets into folders
+
+if (BUILD_TESTING)
+    include(Dart)
+endif()
 
 # First, searching for dependencies
 set (BOOST_COMPONENTS

@@ -27,7 +27,6 @@ before_script:
   - mkdir build
   - cd build
 script:
-  - cmake -DCMAKE_CXX_COMPILER=${COMPILER} ..
+  - cmake -DCMAKE_CXX_COMPILER=${COMPILER} -DBUILD_TESTING=ON ..
   - cmake --build .
-# - make test
-# As tests are in bad state now
+  - ctest --verbose 
