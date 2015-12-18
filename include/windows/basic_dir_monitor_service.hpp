@@ -10,13 +10,10 @@
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/weak_ptr.hpp>
-#include <boost/scoped_ptr.hpp>
-#include <boost/scoped_array.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
+#include <memory>
 #include <string>
 #include <stdexcept>
 #include <windows.h>
@@ -56,10 +53,10 @@ namespace helper {
             helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
 
             char buffer[1024];
-            boost::scoped_array<char> dynbuffer;
+            std::unique_ptr<char[]> dynbuffer;
             if (size > sizeof(buffer))
             {
-                dynbuffer.reset(new char[size]);
+                dynbuffer = std::make_unique<char[]>(size);
                 size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
             }
             else
@@ -82,7 +79,7 @@ class basic_dir_monitor_service
 public:
     struct completion_key
     {
-        completion_key(HANDLE h, const std::string &d, boost::shared_ptr<DirMonitorImplementation> &i)
+        completion_key(HANDLE h, const std::string &d, std::shared_ptr<DirMonitorImplementation> &i)
             : handle(h),
             dirname(d),
             impl(i)
@@ -92,7 +89,7 @@ public:
 
         HANDLE handle;
         std::string dirname;
-        boost::weak_ptr<DirMonitorImplementation> impl;
+        std::weak_ptr<DirMonitorImplementation> impl;
         char buffer[1024];
         OVERLAPPED overlapped;
     };
@@ -114,7 +111,7 @@ public:
     {
         // The async_monitor thread will finish when async_monitor_work_ is reset as all asynchronous
         // operations have been aborted and were discarded before (in destroy).
-        async_monitor_work_.reset();
+        async_monitor_work_.reset(nullptr);
 
         // Event processing is stopped to discard queued operations.
         async_monitor_io_service_.stop();
@@ -131,7 +128,7 @@ public:
         CloseHandle(iocp_);
     }
 
-    typedef boost::shared_ptr<DirMonitorImplementation> implementation_type;
+    typedef std::shared_ptr<DirMonitorImplementation> implementation_type;
 
     void construct(implementation_type &impl)
     {
@@ -209,7 +206,7 @@ public:
         }
 
     private:
-        boost::weak_ptr<DirMonitorImplementation> impl_;
+        std::weak_ptr<DirMonitorImplementation> impl_;
         boost::asio::io_service &io_service_;
         boost::asio::io_service::work work_;
         Handler handler_;
@@ -334,7 +331,7 @@ private:
     bool run_;
     boost::thread work_thread_;
     boost::asio::io_service async_monitor_io_service_;
-    boost::scoped_ptr<boost::asio::io_service::work> async_monitor_work_;
+    std::unique_ptr<boost::asio::io_service::work> async_monitor_work_;
     boost::thread async_monitor_thread_;
 };
 
