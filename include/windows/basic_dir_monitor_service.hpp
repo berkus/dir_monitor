@@ -34,18 +34,6 @@ namespace helper {
 
         }
 
-        template<typename T>
-        void throw_system_error_if(bool condition, const std::string& msg, T *p)
-        {
-            if (condition)
-            {
-                if(p) delete p;
-                DWORD last_error = GetLastError();
-                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
-                boost::throw_exception(e);
-            }
-        }
-
         std::string to_utf8(WCHAR *filename, DWORD length)
         {
             int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
@@ -102,7 +90,7 @@ public:
         iocp_(init_iocp()),
         run_(true),
         work_thread_(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::work_thread, this),
-        async_monitor_work_(new boost::asio::io_service::work(async_monitor_io_service_)),
+        async_monitor_work_(std::make_unique<boost::asio::io_service::work>(async_monitor_io_service_)),
         async_monitor_thread_(boost::bind(&boost::asio::io_service::run, &async_monitor_io_service_))
     {
     }
@@ -132,7 +120,7 @@ public:
 
     void construct(implementation_type &impl)
     {
-        impl.reset(new DirMonitorImplementation());
+        impl = std::make_shared<DirMonitorImplementation>();
     }
 
     void destroy(implementation_type &impl)
@@ -152,17 +140,23 @@ public:
         HANDLE handle = CreateFileA(dirname.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
         helper::throw_system_error_if(INVALID_HANDLE_VALUE == handle, "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
 
-        // No smart pointer can be used as the pointer must travel as a completion key
-        // through the I/O completion port module.
-        completion_key *ck = new completion_key(handle, dirname, impl);
-        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck), 0), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed", ck);
-
+        // a smart pointer is used to free allocated memory automatically in case of 
+        // exceptions while handing over a completion key to the I/O completion port module,
+        // the ownership has to be *released* at the end of scope so as not to free the memory
+        // the OS kernel is using.
+        auto ck_holder = std::make_unique<completion_key>(handle, dirname, impl);
+        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
 
         DWORD bytes_transferred; // ignored
-        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed", ck);
-
-
-        impl->add_directory(dirname, ck->handle);
+        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
+        
+        impl->add_directory(dirname, ck_holder->handle);
+        
+    
+        // if we come all along here, surviving all possible exceptions, 
+        // the allocated memory has been successfully handed over to the OS, 
+        // and we should let go of the ownership.  
+        ck_holder.release();
     }
 
     void remove_directory(implementation_type &impl, const std::string &dirname)
@@ -250,54 +244,57 @@ private:
     void work()
     {
         DWORD bytes_transferred = 0;
-        completion_key *ck = nullptr;
+        completion_key* ck = nullptr;
         OVERLAPPED *overlapped = nullptr;
 
-        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
+        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE),            "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
 
-        if (ck)
+        // a smart pointer is used to free allocated memory automatically in case of 
+        // exceptions while handing over a completion key to the I/O completion port module,
+        // the ownership has to be *released* at the end of scope so as not to free the memory
+        // the OS kernel is using.
+        std::unique_ptr<completion_key> ck_holder(ck);
+        if (ck_holder && bytes_transferred)
         {
             // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
             // The completion key must be deleted then as it won't be used anymore.
-            if (!bytes_transferred) {
-                delete ck;
-            }
-            else
+
+            // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
+            // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
+            // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
+            implementation_type impl = ck_holder->impl.lock();
+
+            // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
+            if (impl) 
             {
-                // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
-                // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
-                // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
-                implementation_type impl = ck->impl.lock();
-
-                // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
-                if (!impl) {
-                    delete ck;
-                }
-                else
+                DWORD offset = 0;
+                PFILE_NOTIFY_INFORMATION fni;
+                do
                 {
-                    DWORD offset = 0;
-                    PFILE_NOTIFY_INFORMATION fni;
-                    do
+                    fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck_holder->buffer + offset);
+                    dir_monitor_event::event_type type = dir_monitor_event::null;
+                    switch (fni->Action)
                     {
-                        fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
-                        dir_monitor_event::event_type type = dir_monitor_event::null;
-                        switch (fni->Action)
-                        {
-                        case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
-                        case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
-                        case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
-                        case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                        case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                        }
-                        impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
-                        offset += fni->NextEntryOffset;
-                    } while (fni->NextEntryOffset);
+                    case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
+                    case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
+                    case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
+                    case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                    case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
+                    }
+                    impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck_holder->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                    offset += fni->NextEntryOffset;
+                } while (fni->NextEntryOffset);
 
-                    ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
-                    helper::throw_system_error_if(!ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed", ck);
-                }
+                ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
+                helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), 
+                    "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
             }
         }
+    
+        // if we come all along here, surviving all possible exceptions, 
+        // the allocated memory has been successfully handed over to the OS, 
+        // and we should let go of the ownership.  
+       ck_holder.release();
     }
 
     bool running()
