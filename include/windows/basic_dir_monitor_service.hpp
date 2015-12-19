@@ -254,41 +254,40 @@ private:
         // the ownership has to be *released* at the end of scope so as not to free the memory
         // the OS kernel is using.
         std::unique_ptr<completion_key> ck_holder(ck);
-        if (ck_holder && bytes_transferred)
+        if (!ck_holder || !bytes_transferred) return;
+
+        // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
+        // The completion key must be deleted then as it won't be used anymore.
+
+        // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
+        // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
+        // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
+        implementation_type impl = ck_holder->impl.lock();
+
+        // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
+        if (impl) 
         {
-            // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
-            // The completion key must be deleted then as it won't be used anymore.
-
-            // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
-            // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
-            // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
-            implementation_type impl = ck_holder->impl.lock();
-
-            // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
-            if (impl) 
+            DWORD offset = 0;
+            PFILE_NOTIFY_INFORMATION fni;
+            do
             {
-                DWORD offset = 0;
-                PFILE_NOTIFY_INFORMATION fni;
-                do
+                fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck_holder->buffer + offset);
+                dir_monitor_event::event_type type = dir_monitor_event::null;
+                switch (fni->Action)
                 {
-                    fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck_holder->buffer + offset);
-                    dir_monitor_event::event_type type = dir_monitor_event::null;
-                    switch (fni->Action)
-                    {
-                    case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
-                    case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
-                    case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
-                    case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                    case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                    }
-                    impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck_holder->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
-                    offset += fni->NextEntryOffset;
-                } while (fni->NextEntryOffset);
+                case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
+                case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
+                case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
+                case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
+                }
+                impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck_holder->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                offset += fni->NextEntryOffset;
+            } while (fni->NextEntryOffset);
 
-                ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
-                helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), 
-                    "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
-            }
+            ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
+            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), 
+                "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
         }
     
         // if we come all along here, surviving all possible exceptions, 
