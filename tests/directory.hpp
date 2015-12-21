@@ -19,10 +19,10 @@ class directory
 {
 public:
     directory(const char *name)
-        : name_(boost::filesystem::complete(name))
+        : full_path(boost::filesystem::initial_path() / name)
     {
-        boost::filesystem::create_directory(name_);
-        BOOST_REQUIRE(boost::filesystem::is_directory(name_));
+        boost::filesystem::create_directory(full_path);
+        BOOST_REQUIRE(boost::filesystem::is_directory(full_path));
     }
 
     ~directory()
@@ -32,7 +32,7 @@ public:
         {
             try
             {
-                boost::filesystem::remove_all(name_);
+                boost::filesystem::remove_all(full_path);
                 again = false;
             }
             catch (...)
@@ -43,31 +43,33 @@ public:
         } while (again);
     }
 
-    void create_file(const char *file)
+    boost::filesystem::path create_file(const char *file)
     {
-        boost::filesystem::current_path(name_);
-        BOOST_REQUIRE(boost::filesystem::equivalent(name_, boost::filesystem::current_path()));
+        boost::filesystem::current_path(full_path);
+        BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
         std::ofstream ofs(file);
         BOOST_REQUIRE(boost::filesystem::exists(file));
         boost::filesystem::current_path(boost::filesystem::initial_path());
         BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+        return full_path / file;
     }
 
-    void rename_file(const char *from, const char *to)
+    boost::filesystem::path rename_file(const char *from, const char *to)
     {
-        boost::filesystem::current_path(name_);
-        BOOST_REQUIRE(boost::filesystem::equivalent(name_, boost::filesystem::current_path()));
+        boost::filesystem::current_path(full_path);
+        BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
         BOOST_REQUIRE(boost::filesystem::exists(from));
         boost::filesystem::rename(from, to);
         BOOST_REQUIRE(boost::filesystem::exists(to));
         boost::filesystem::current_path(boost::filesystem::initial_path());
         BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+        return full_path / to;
     }
 
     void remove_file(const char *file)
     {
-        boost::filesystem::current_path(name_);
-        BOOST_REQUIRE(boost::filesystem::equivalent(name_, boost::filesystem::current_path()));
+        boost::filesystem::current_path(full_path);
+        BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
         BOOST_REQUIRE(boost::filesystem::exists(file));
         boost::filesystem::remove(file);
         boost::filesystem::current_path(boost::filesystem::initial_path());
@@ -75,6 +77,6 @@ public:
     }
 
 private:
-    boost::filesystem::path name_;
+    boost::filesystem::path full_path;
 };
 

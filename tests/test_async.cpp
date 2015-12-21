@@ -7,17 +7,15 @@
 #define BOOST_AUTO_TEST_MAIN
 #include <boost/test/auto_unit_test.hpp>
 #include "dir_monitor.hpp"
+#include "check_paths.hpp"
 #include "directory.hpp"
 
 boost::asio::io_service io_service;
 
-void create_file_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void create_file_handler(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
-    boost::filesystem::path fullpath = boost::filesystem::canonical(TEST_DIR1);
-    fullpath /= TEST_FILE1;
-
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
-    BOOST_CHECK_EQUAL(ev.path, fullpath);
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::added);
 }
 
@@ -28,30 +26,24 @@ BOOST_AUTO_TEST_CASE(create_file)
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
 
-    dir.create_file(TEST_FILE1);
+    auto test_file1 = dir.create_file(TEST_FILE1);
 
-    dm.async_monitor(create_file_handler);
+    dm.async_monitor(boost::bind(&create_file_handler, boost::ref(test_file1), _1, _2));
     io_service.run();
     io_service.reset();
 }
 
-void rename_file_handler_old(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void rename_file_handler_old(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
-    boost::filesystem::path fullpath = boost::filesystem::canonical(TEST_DIR1);
-    fullpath /= TEST_FILE1;
-
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
-    BOOST_CHECK_EQUAL(ev.path, fullpath);
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::renamed_old_name);
 }
 
-void rename_file_handler_new(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void rename_file_handler_new(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
-    boost::filesystem::path fullpath = boost::filesystem::canonical(TEST_DIR1);
-    fullpath /= TEST_FILE2;
-
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
-    BOOST_CHECK_EQUAL(ev.path, fullpath);
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::renamed_new_name);
 }
 
@@ -68,49 +60,40 @@ void modify_file_handler(const boost::system::error_code &ec, const boost::asio:
 BOOST_AUTO_TEST_CASE(rename_file)
 {
     directory dir(TEST_DIR1);
-    dir.create_file(TEST_FILE1);
+    auto test_file1 = dir.create_file(TEST_FILE1);
 
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
 
-    dir.rename_file(TEST_FILE1, TEST_FILE2);
+    auto test_file2 = dir.rename_file(TEST_FILE1, TEST_FILE2);
 
-    dm.async_monitor(rename_file_handler_old);
+    dm.async_monitor(boost::bind(&rename_file_handler_old, boost::ref(test_file1), _1, _2));
     io_service.run();
     io_service.reset();
 
-    dm.async_monitor(rename_file_handler_new);
+    dm.async_monitor(boost::bind(&rename_file_handler_new, boost::ref(test_file2), _1, _2));
     io_service.run();
     io_service.reset();
-
-#if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
-    dm.async_monitor(modify_file_handler);
-    io_service.run();
-    io_service.reset();
-#endif
 }
 
-void remove_file_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void remove_file_handler(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
 {
-    boost::filesystem::path fullpath = boost::filesystem::canonical(TEST_DIR1);
-    fullpath /= TEST_FILE1;
-
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
-    BOOST_CHECK_EQUAL(ev.path, fullpath);
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::removed);
 }
 
 BOOST_AUTO_TEST_CASE(remove_file)
 {
     directory dir(TEST_DIR1);
-    dir.create_file(TEST_FILE1);
+    auto test_file1 = dir.create_file(TEST_FILE1);
 
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
 
     dir.remove_file(TEST_FILE1);
 
-    dm.async_monitor(remove_file_handler);
+    dm.async_monitor(boost::bind(&remove_file_handler, boost::ref(test_file1), _1, _2));
     io_service.run();
     io_service.reset();
 }
@@ -122,26 +105,20 @@ BOOST_AUTO_TEST_CASE(multiple_events)
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
 
-    dir.create_file(TEST_FILE1);
-    dir.rename_file(TEST_FILE1, TEST_FILE2);
+    auto test_file1 = dir.create_file(TEST_FILE1);
+    auto test_file2 = dir.rename_file(TEST_FILE1, TEST_FILE2);
 
-    dm.async_monitor(create_file_handler);
+    dm.async_monitor(boost::bind(&create_file_handler, boost::ref(test_file1), _1, _2));
     io_service.run();
     io_service.reset();
 
-    dm.async_monitor(rename_file_handler_old);
+    dm.async_monitor(boost::bind(&rename_file_handler_old, boost::ref(test_file1), _1, _2));
     io_service.run();
     io_service.reset();
 
-    dm.async_monitor(rename_file_handler_new);
+    dm.async_monitor(boost::bind(&rename_file_handler_new, boost::ref(test_file2), _1, _2));
     io_service.run();
     io_service.reset();
-
-#if defined(_WIN32) || defined(__WIN32__) || defined(WIN32)
-    dm.async_monitor(modify_file_handler);
-    io_service.run();
-    io_service.reset();
-#endif
 }
 
 void aborted_async_call_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
@@ -261,4 +238,3 @@ BOOST_AUTO_TEST_CASE(two_dir_monitors)
     t.join();
     io_service.reset();
 }
-
