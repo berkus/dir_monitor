@@ -58,27 +58,6 @@ public:
     {
     }
 
-    ~basic_dir_monitor_service()
-    {
-        // The async_monitor thread will finish when async_monitor_work_ is reset as all asynchronous
-        // operations have been aborted and were discarded before (in destroy).
-        async_monitor_work_.reset();
-
-        // Event processing is stopped to discard queued operations.
-        async_monitor_io_service_.stop();
-
-        // The async_monitor thread is joined to make sure the directory monitor service is
-        // destroyed _after_ the thread is finished (not that the thread tries to access
-        // instance properties which don't exist anymore).
-        async_monitor_thread_.join();
-
-        // The work thread is stopped and joined, too.
-        stop_work_thread();
-        work_thread_.join();
-
-        CloseHandle(iocp_);
-    }
-
     typedef boost::shared_ptr<DirMonitorImplementation> implementation_type;
 
     void construct(implementation_type &impl)
@@ -161,16 +140,32 @@ public:
         void operator()() const
         {
             implementation_type impl = impl_.lock();
+            boost::system::error_code ec = boost::asio::error::operation_aborted;
+            dir_monitor_event ev;
             if (impl)
-            {
-                boost::system::error_code ec;
-                dir_monitor_event ev = impl->popfront_event(ec);
-                this->io_service_.post(boost::asio::detail::bind_handler(handler_, ec, ev));
-            }
-            else
-            {
-                this->io_service_.post(boost::asio::detail::bind_handler(handler_, boost::asio::error::operation_aborted, dir_monitor_event()));
-            }
+                ev = impl->popfront_event(ec);
+            PostAndWait(ec, ev);
+        }
+
+    protected:
+        void PostAndWait(const boost::system::error_code ec, const dir_monitor_event& ev) const
+        {
+            boost::mutex post_mutex;
+            boost::condition_variable post_conditional_variable;
+            bool post_cancel = false;
+
+            this->io_service_.post(
+                [&]
+                {
+                    handler_(ec, ev);
+                    boost::unique_lock<boost::mutex> lock(post_mutex);
+                    post_cancel = true;
+                    post_conditional_variable.notify_one();
+                }
+            );
+            boost::unique_lock<boost::mutex> lock(post_mutex);
+            while (!post_cancel)
+                post_conditional_variable.wait(lock);
         }
 
     private:
@@ -187,8 +182,25 @@ public:
     }
 
 private:
-    void shutdown_service()
+    virtual void shutdown_service() override
     {
+        // The async_monitor thread will finish when async_monitor_work_ is reset as all asynchronous
+        // operations have been aborted and were discarded before (in destroy).
+        async_monitor_work_.reset();
+
+        // Event processing is stopped to discard queued operations.
+        async_monitor_io_service_.stop();
+
+        // The async_monitor thread is joined to make sure the directory monitor service is
+        // destroyed _after_ the thread is finished (not that the thread tries to access
+        // instance properties which don't exist anymore).
+        async_monitor_thread_.join();
+
+        // The work thread is stopped and joined, too.
+        stop_work_thread();
+        work_thread_.join();
+
+        CloseHandle(iocp_);
     }
 
     HANDLE init_iocp()

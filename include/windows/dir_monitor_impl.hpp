@@ -62,17 +62,18 @@ public:
     dir_monitor_event popfront_event(boost::system::error_code &ec)
     {
         boost::unique_lock<boost::mutex> lock(events_mutex_);
-        while (run_ && events_.empty())
-            events_cond_.wait(lock);
+        events_cond_.wait(lock, [&] { return !(run_ && events_.empty()); });
+
         dir_monitor_event ev;
-        if (!events_.empty())
+        ec = boost::system::error_code();
+        if (!run_)
+            ec = boost::asio::error::operation_aborted;
+        else if (!events_.empty())
         {
-            ec = boost::system::error_code();
             ev = events_.front();
             events_.pop_front();
         }
-        else
-            ec = boost::asio::error::operation_aborted;
+
         return ev;
     }
 

@@ -152,9 +152,9 @@ BOOST_AUTO_TEST_CASE(blocked_async_call)
     boost::thread t;
 
     {
-        boost::asio::io_service io_service;
+        boost::asio::io_service local_io_service;
 
-        boost::asio::dir_monitor dm(io_service);
+        boost::asio::dir_monitor dm(local_io_service);
         dm.add_directory(TEST_DIR1);
 
         dm.async_monitor(blocked_async_call_handler_with_local_ioservice);
@@ -162,14 +162,13 @@ BOOST_AUTO_TEST_CASE(blocked_async_call)
         // run() is invoked on another thread to make async_monitor() call a blocking function.
         // When dm and io_service go out of scope they should be destroyed properly without
         // a thread being blocked.
-        t = boost::thread(boost::bind(&boost::asio::io_service::run, boost::ref(io_service)));
+        t = boost::thread(boost::bind(&boost::asio::io_service::run, boost::ref(local_io_service)));
         boost::system_time time = boost::get_system_time();
         time += boost::posix_time::time_duration(0, 0, 1);
         boost::thread::sleep(time);
     }
 
     t.join();
-    io_service.reset();
 }
 
 void unregister_directory_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
