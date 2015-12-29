@@ -16,6 +16,8 @@
 #include <string>
 #include <stdexcept>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 
 namespace boost {
 namespace asio {
@@ -32,21 +34,6 @@ public:
         async_monitor_work_(new boost::asio::io_service::work(async_monitor_io_service_)),
         async_monitor_thread_(boost::bind(&boost::asio::io_service::run, &async_monitor_io_service_))
     {
-    }
-
-    ~basic_dir_monitor_service()
-    {
-        // The async_monitor thread will finish when async_monitor_work_ is reset as all asynchronous
-        // operations have been aborted and were discarded before (in destroy).
-        async_monitor_work_.reset();
-
-        // Event processing is stopped to discard queued operations.
-        async_monitor_io_service_.stop();
-
-        // The async_monitor thread is joined to make sure the directory monitor service is
-        // destroyed _after_ the thread is finished (not that the thread tries to access
-        // instance properties which don't exist anymore).
-        async_monitor_thread_.join();
     }
 
     typedef std::shared_ptr<DirMonitorImplementation> implementation_type;
@@ -102,16 +89,32 @@ public:
         void operator()() const
         {
             implementation_type impl = impl_.lock();
+            boost::system::error_code ec = boost::asio::error::operation_aborted;
+            dir_monitor_event ev;
             if (impl)
-            {
-                boost::system::error_code ec;
-                dir_monitor_event ev = impl->popfront_event(ec);
-                this->io_service_.post(boost::asio::detail::bind_handler(handler_, ec, ev));
-            }
-            else
-            {
-                this->io_service_.post(boost::asio::detail::bind_handler(handler_, boost::asio::error::operation_aborted, dir_monitor_event()));
-            }
+                ev = impl->popfront_event(ec);
+            PostAndWait(ec, ev);
+        }
+
+    protected:
+        void PostAndWait(const boost::system::error_code ec, const dir_monitor_event& ev) const
+        {
+            std::mutex post_mutex;
+            std::condition_variable post_condition_variable;
+            bool post_cancel = false;
+
+            this->io_service_.post(
+                [&]
+                {
+                    handler_(ec, ev);
+                    std::lock_guard<std::mutex> lock(post_mutex);
+                    post_cancel = true;
+                    post_condition_variable.notify_one();
+                }
+            );
+            std::unique_lock<std::mutex> lock(post_mutex);
+            while (!post_cancel)
+                post_condition_variable.wait(lock);
         }
 
     private:
@@ -128,8 +131,21 @@ public:
     }
 
 private:
-    void shutdown_service()
+    virtual void shutdown_service() override
     {
+        // The async_monitor thread will finish when async_monitor_work_ is reset as all asynchronous
+        // operations have been aborted and were discarded before (in destroy).
+        async_monitor_work_.reset();
+
+        // Event processing is stopped to discard queued operations.
+        async_monitor_io_service_.stop();
+
+        // The async_monitor thread is joined to make sure the directory monitor service is
+        // destroyed _after_ the thread is finished (not that the thread tries to access
+        // instance properties which don't exist anymore).
+        async_monitor_thread_.join();
+        
+        std::cout << "shutdown complete" << std::endl;
     }
 
     boost::asio::io_service async_monitor_io_service_;

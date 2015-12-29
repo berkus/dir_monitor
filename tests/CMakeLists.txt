@@ -13,11 +13,16 @@ function(create_test NAME)
 endfunction(create_test)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 if (APPLE)
     find_library(COREFOUNDATION_LIB CoreFoundation)
     find_library(CORESERVICES_LIB CoreServices)
 endif (APPLE)
+
+if (CMAKE_COMPILER_IS_GNUCXX)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g")
+endif()
 
 set(BOOST_TEST_LINK_MODE "BOOST_TEST_DYN_LINK")
 if (BOOST_TEST_STATIC_LINK)
