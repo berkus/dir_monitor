@@ -218,7 +218,7 @@ private:
         runloop_cond_.notify_all();
     }
 
-    bool run_{false};
+    bool run_;
     CFRunLoopRef runloop_;
     boost::mutex runloop_mutex_;
     boost::condition_variable runloop_cond_;
