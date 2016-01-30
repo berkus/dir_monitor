@@ -10,19 +10,55 @@
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/weak_ptr.hpp>
-#include <boost/scoped_ptr.hpp>
-#include <boost/scoped_array.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
+#include <memory>
 #include <string>
 #include <stdexcept>
 #include <windows.h>
 
 namespace boost {
 namespace asio {
+
+namespace helper {
+
+        void throw_system_error_if(bool condition, const std::string& msg)
+        {
+            if (condition)
+            {
+                DWORD last_error = GetLastError();
+                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
+                boost::throw_exception(e);
+            }
+
+        }
+
+        std::string to_utf8(WCHAR *filename, DWORD length)
+        {
+            int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
+
+            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
+
+            char buffer[1024];
+            std::unique_ptr<char[]> dynbuffer;
+            if (size > sizeof(buffer))
+            {
+                dynbuffer = std::make_unique<char[]>(size);
+                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
+            }
+            else
+            {
+                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, buffer, sizeof(buffer), NULL, NULL);
+            }
+
+            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
+
+
+            return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
+        }
+
+}
 
 template <typename DirMonitorImplementation = dir_monitor_impl>
 class basic_dir_monitor_service
@@ -31,7 +67,7 @@ class basic_dir_monitor_service
 public:
     struct completion_key
     {
-        completion_key(HANDLE h, const std::string &d, boost::shared_ptr<DirMonitorImplementation> &i)
+        completion_key(HANDLE h, const std::string &d, std::shared_ptr<DirMonitorImplementation> &i)
             : handle(h),
             dirname(d),
             impl(i)
@@ -41,7 +77,7 @@ public:
 
         HANDLE handle;
         std::string dirname;
-        boost::weak_ptr<DirMonitorImplementation> impl;
+        std::weak_ptr<DirMonitorImplementation> impl;
         char buffer[1024];
         OVERLAPPED overlapped;
     };
@@ -50,19 +86,20 @@ public:
 
     explicit basic_dir_monitor_service(boost::asio::io_service &io_service)
         : boost::asio::io_service::service(io_service),
+        last_work_thread_exception_ptr_(nullptr),
         iocp_(init_iocp()),
         run_(true),
         work_thread_(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::work_thread, this),
-        async_monitor_work_(new boost::asio::io_service::work(async_monitor_io_service_)),
+        async_monitor_work_(std::make_unique<boost::asio::io_service::work>(async_monitor_io_service_)),
         async_monitor_thread_(boost::bind(&boost::asio::io_service::run, &async_monitor_io_service_))
     {
     }
 
-    typedef boost::shared_ptr<DirMonitorImplementation> implementation_type;
+    typedef std::shared_ptr<DirMonitorImplementation> implementation_type;
 
     void construct(implementation_type &impl)
     {
-        impl.reset(new DirMonitorImplementation());
+        impl = std::make_shared<DirMonitorImplementation>();
     }
 
     void destroy(implementation_type &impl)
@@ -80,36 +117,25 @@ public:
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
 
         HANDLE handle = CreateFileA(dirname.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
-        if (handle == INVALID_HANDLE_VALUE)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(INVALID_HANDLE_VALUE == handle, "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
 
-        // No smart pointer can be used as the pointer must travel as a completion key
-        // through the I/O completion port module.
-        completion_key *ck = new completion_key(handle, dirname, impl);
-        iocp_ = CreateIoCompletionPort(ck->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck), 0);
-        if (iocp_ == NULL)
-        {
-            delete ck;
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
-            boost::throw_exception(e);
-        }
+        // a smart pointer is used to free allocated memory automatically in case of 
+        // exceptions while handing over a completion key to the I/O completion port module,
+        // the ownership has to be *released* at the end of scope so as not to free the memory
+        // the OS kernel is using.
+        auto ck_holder = std::make_unique<completion_key>(handle, dirname, impl);
+        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
 
         DWORD bytes_transferred; // ignored
-        BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
-        if (!res)
-        {
-            delete ck;
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
-            boost::throw_exception(e);
-        }
-
-        impl->add_directory(dirname, ck->handle);
+        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
+        
+        impl->add_directory(dirname, ck_holder->handle);
+        
+    
+        // if we come all along here, surviving all possible exceptions, 
+        // the allocated memory has been successfully handed over to the OS, 
+        // and we should let go of the ownership.  
+        ck_holder.release();
     }
 
     void remove_directory(implementation_type &impl, const std::string &dirname)
@@ -169,7 +195,7 @@ public:
         }
 
     private:
-        boost::weak_ptr<DirMonitorImplementation> impl_;
+        std::weak_ptr<DirMonitorImplementation> impl_;
         boost::asio::io_service &io_service_;
         boost::asio::io_service::work work_;
         Handler handler_;
@@ -206,12 +232,8 @@ private:
     HANDLE init_iocp()
     {
         HANDLE iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-        if (iocp == NULL)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::init_iocp: CreateIoCompletionPort failed");
-            boost::throw_exception(e);
-        }
+        helper::throw_system_error_if(iocp == NULL, "boost::asio::basic_dir_monitor_service::init_iocp: CreateIoCompletionPort failed");
+
         return iocp;
     }
 
@@ -219,69 +241,71 @@ private:
     {
         while (running())
         {
-            DWORD bytes_transferred;
-            completion_key *ck;
-            OVERLAPPED *overlapped;
-            BOOL res = GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE);
-            if (!res)
+            try
             {
-                DWORD last_error = GetLastError();
-                boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
-                boost::throw_exception(e);
+                work();
             }
-
-            if (ck)
+            catch (...)
             {
-                // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
-                // The completion key must be deleted then as it won't be used anymore.
-                if (!bytes_transferred) {
-                    delete ck;
-                }
-                else
-                {
-                    // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
-                    // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
-                    // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
-                    implementation_type impl = ck->impl.lock();
-
-                    // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
-                    if (!impl) {
-                        delete ck;
-                    }
-                    else
-                    {
-                        DWORD offset = 0;
-                        PFILE_NOTIFY_INFORMATION fni;
-                        do
-                        {
-                            fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck->buffer + offset);
-                            dir_monitor_event::event_type type = dir_monitor_event::null;
-                            switch (fni->Action)
-                            {
-                            case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
-                            case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
-                            case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
-                            case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                            case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                            }
-                            impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck->dirname) / to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
-                            offset += fni->NextEntryOffset;
-                        }
-                        while (fni->NextEntryOffset);
-
-                        ZeroMemory(&ck->overlapped, sizeof(ck->overlapped));
-                        BOOL res = ReadDirectoryChangesW(ck->handle, ck->buffer, sizeof(ck->buffer), FALSE, 0x1FF, &bytes_transferred, &ck->overlapped, NULL);
-                        if (!res)
-                        {
-                            delete ck;
-                            DWORD last_error = GetLastError();
-                            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
-                            boost::throw_exception(e);
-                        }
-                    }
-                }
+                last_work_thread_exception_ptr_ = std::current_exception();
+                this->get_io_service().post(boost::bind(&boost::asio::basic_dir_monitor_service<DirMonitorImplementation>::throw_work_exception_handler, this));
             }
         }
+    }
+
+    void work()
+    {
+        DWORD bytes_transferred = 0;
+        completion_key* ck = nullptr;
+        OVERLAPPED *overlapped = nullptr;
+
+        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE),            "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
+
+        // a smart pointer is used to free allocated memory automatically in case of 
+        // exceptions while handing over a completion key to the I/O completion port module,
+        // the ownership has to be *released* at the end of scope so as not to free the memory
+        // the OS kernel is using.
+        std::unique_ptr<completion_key> ck_holder(ck);
+        if (!ck_holder || !bytes_transferred) return;
+
+        // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
+        // The completion key must be deleted then as it won't be used anymore.
+
+        // We must check if the implementation still exists. If the I/O object is destroyed while a directory event
+        // is detected we have a race condition. Using a weak_ptr and a lock we make sure that we either grab a
+        // shared_ptr first or - if the implementation has already been destroyed - don't do anything at all.
+        implementation_type impl = ck_holder->impl.lock();
+
+        // If the implementation doesn't exist anymore we must delete the completion key as it won't be used anymore.
+        if (impl) 
+        {
+            DWORD offset = 0;
+            PFILE_NOTIFY_INFORMATION fni;
+            do
+            {
+                fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck_holder->buffer + offset);
+                dir_monitor_event::event_type type = dir_monitor_event::null;
+                switch (fni->Action)
+                {
+                case FILE_ACTION_ADDED: type = dir_monitor_event::added; break;
+                case FILE_ACTION_REMOVED: type = dir_monitor_event::removed; break;
+                case FILE_ACTION_MODIFIED: type = dir_monitor_event::modified; break;
+                case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
+                }
+                impl->pushback_event(dir_monitor_event(boost::filesystem::path(ck_holder->dirname) / helper::to_utf8(fni->FileName, fni->FileNameLength / sizeof(WCHAR)), type));
+                offset += fni->NextEntryOffset;
+            } while (fni->NextEntryOffset);
+
+            ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
+            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), 
+                "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
+        }
+    
+        // if we come all along here, surviving all possible exceptions, 
+        // the allocated memory has been successfully handed over to the OS, 
+        // and we should let go of the ownership.  
+       ck_holder.release();
     }
 
     bool running()
@@ -289,6 +313,12 @@ private:
         // Access to run_ is sychronized with stop_work_thread().
         boost::mutex::scoped_lock lock(work_thread_mutex_);
         return run_;
+    }
+
+    void throw_work_exception_handler()
+    {
+        if (last_work_thread_exception_ptr_)
+            std::rethrow_exception(last_work_thread_exception_ptr_);
     }
 
     void stop_work_thread()
@@ -299,53 +329,17 @@ private:
 
         // By setting the third paramter to 0 GetQueuedCompletionStatus() will return with a null pointer as the completion key.
         // The work thread won't do anything except checking if it should continue to run. As run_ is set to false it will stop.
-        BOOL res = PostQueuedCompletionStatus(iocp_, 0, 0, NULL);
-        if (!res)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
-            boost::throw_exception(e);
-        }
+
+        helper::throw_system_error_if(PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
-    std::string to_utf8(WCHAR *filename, DWORD length)
-    {
-        int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
-        if (!size)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
-            boost::throw_exception(e);
-        }
-
-        char buffer[1024];
-        boost::scoped_array<char> dynbuffer;
-        if (size > sizeof(buffer))
-        {
-            dynbuffer.reset(new char[size]);
-            size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
-        }
-        else
-        {
-            size = WideCharToMultiByte(CP_UTF8, 0, filename, length, buffer, sizeof(buffer), NULL, NULL);
-        }
-
-        if (!size)
-        {
-            DWORD last_error = GetLastError();
-            boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
-            boost::throw_exception(e);
-        }
-
-        return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
-    }
-
+    std::exception_ptr last_work_thread_exception_ptr_;
     HANDLE iocp_;
     boost::mutex work_thread_mutex_;
     bool run_;
     boost::thread work_thread_;
     boost::asio::io_service async_monitor_io_service_;
-    boost::scoped_ptr<boost::asio::io_service::work> async_monitor_work_;
+    std::unique_ptr<boost::asio::io_service::work> async_monitor_work_;
     boost::thread async_monitor_thread_;
 };
 
