@@ -31,7 +31,6 @@ namespace helper {
                 boost::system::system_error e(boost::system::error_code(last_error, boost::system::get_system_category()), msg);
                 boost::throw_exception(e);
             }
-
         }
 
         std::string to_utf8(WCHAR *filename, DWORD length)
@@ -54,10 +53,8 @@ namespace helper {
 
             helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
 
-
             return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
         }
-
 }
 
 template <typename DirMonitorImplementation = dir_monitor_impl>
@@ -124,14 +121,15 @@ public:
         // the ownership has to be *released* at the end of scope so as not to free the memory
         // the OS kernel is using.
         auto ck_holder = std::make_unique<completion_key>(handle, dirname, impl);
-        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0), "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
+        helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0),
+            "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
 
         DWORD bytes_transferred; // ignored
-        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
-        
+        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
+            "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
+
         impl->add_directory(dirname, ck_holder->handle);
-        
-    
+
         // if we come all along here, surviving all possible exceptions, 
         // the allocated memory has been successfully handed over to the OS, 
         // and we should let go of the ownership.  
@@ -259,14 +257,16 @@ private:
         completion_key* ck = nullptr;
         OVERLAPPED *overlapped = nullptr;
 
-        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE),            "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
+        helper::throw_system_error_if(!GetQueuedCompletionStatus(iocp_, &bytes_transferred, reinterpret_cast<PULONG_PTR>(&ck), &overlapped, INFINITE),
+            "boost::asio::basic_dir_monitor_service::work_thread: GetQueuedCompletionStatus failed");
 
         // a smart pointer is used to free allocated memory automatically in case of 
         // exceptions while handing over a completion key to the I/O completion port module,
         // the ownership has to be *released* at the end of scope so as not to free the memory
         // the OS kernel is using.
         std::unique_ptr<completion_key> ck_holder(ck);
-        if (!ck_holder || !bytes_transferred) return;
+        if (!ck_holder || !bytes_transferred)
+            return;
 
         // If a file handle is closed GetQueuedCompletionStatus() returns and bytes_transferred will be set to 0.
         // The completion key must be deleted then as it won't be used anymore.
@@ -280,7 +280,7 @@ private:
         if (impl) 
         {
             DWORD offset = 0;
-            PFILE_NOTIFY_INFORMATION fni;
+            PFILE_NOTIFY_INFORMATION fni = nullptr;
             do
             {
                 fni = reinterpret_cast<PFILE_NOTIFY_INFORMATION>(ck_holder->buffer + offset);
@@ -298,14 +298,14 @@ private:
             } while (fni->NextEntryOffset);
 
             ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
-            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL), 
+            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
                 "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
         }
     
         // if we come all along here, surviving all possible exceptions, 
         // the allocated memory has been successfully handed over to the OS, 
         // and we should let go of the ownership.  
-       ck_holder.release();
+        ck_holder.release();
     }
 
     bool running()
@@ -329,7 +329,6 @@ private:
 
         // By setting the third paramter to 0 GetQueuedCompletionStatus() will return with a null pointer as the completion key.
         // The work thread won't do anything except checking if it should continue to run. As run_ is set to false it will stop.
-
         helper::throw_system_error_if(!PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
