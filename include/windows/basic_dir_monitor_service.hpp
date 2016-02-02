@@ -330,7 +330,7 @@ private:
         // By setting the third paramter to 0 GetQueuedCompletionStatus() will return with a null pointer as the completion key.
         // The work thread won't do anything except checking if it should continue to run. As run_ is set to false it will stop.
 
-        helper::throw_system_error_if(PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
+        helper::throw_system_error_if(!PostQueuedCompletionStatus(iocp_, 0, 0, NULL), "boost::asio::basic_dir_monitor_service::stop_work_thread: PostQueuedCompletionStatus failed");
     }
 
     std::exception_ptr last_work_thread_exception_ptr_;
