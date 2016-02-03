@@ -4,7 +4,7 @@ function(create_test NAME)
     cmake_parse_arguments(CT "NO_CTEST" "" "LIBS" ${ARGN})
     add_executable(test_${NAME} test_${NAME}.cpp directory.hpp check_paths.hpp)
     target_link_libraries(test_${NAME} ${CT_LIBS} ${Boost_LIBRARIES} dir_monitor)
-    target_compile_definitions(test_${NAME} PRIVATE ${BOOST_TEST_LINK_MODE} BOOST_ASIO_ENABLE_HANDLER_TRACKING)
+    target_compile_definitions(test_${NAME} PRIVATE ${BOOST_TEST_LINK_MODE} BOOST_ASIO_ENABLE_HANDLER_TRACKING BOOST_ASIO_STANDALONE BOOST_ALL_NO_LIB BOOST_ASIO_HAS_BOOST_BIND)
     install(TARGETS test_${NAME}
         RUNTIME DESTINATION tests/unittests)
     if (NOT CT_NO_CTEST)
