@@ -15,9 +15,9 @@ endif()
 set (BOOST_COMPONENTS
 	system
 	date_time
-	program_options
 	thread
-	filesystem)
+	filesystem
+)
 if (BUILD_TESTING)
 	list(APPEND BOOST_COMPONENTS unit_test_framework)
 endif (BUILD_TESTING)
