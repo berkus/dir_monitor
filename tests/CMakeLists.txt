@@ -24,6 +24,11 @@ if (CMAKE_COMPILER_IS_GNUCXX)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g")
 endif()
 
+if (MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DUNICODE /D_UNICODE /D_WINDOWS /W4 /D_SCL_SECURE_NO_WARNINGS /MP /Z7")
+    add_definitions( -D_WIN32_WINNT=0x0600 ) # setting minimum supported target version to Vista
+endif()
+
 set(BOOST_TEST_LINK_MODE "BOOST_TEST_DYN_LINK")
 if (BOOST_TEST_STATIC_LINK)
     set(BOOST_TEST_LINK_MODE "BOOST_TEST_NO_LIB")
