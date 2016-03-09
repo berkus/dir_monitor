@@ -1,5 +1,5 @@
 #include <boost/filesystem.hpp>
-#include "dir_monitor.hpp"
+#include "dir_monitor/dir_monitor.hpp"
 
 #define TEST_DIR1 "F95A7AE9-D5F5-459a-AB8D-28649FB1FF34"
 

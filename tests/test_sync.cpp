@@ -7,7 +7,7 @@
 #define BOOST_AUTO_TEST_MAIN
 #include <boost/test/auto_unit_test.hpp>
 #include <boost/filesystem.hpp>
-#include "dir_monitor.hpp"
+#include "dir_monitor/dir_monitor.hpp"
 #include "check_paths.hpp"
 #include "directory.hpp"
 
