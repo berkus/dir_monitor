@@ -46,7 +46,8 @@ private:
 
 struct the_same_paths_relative_impl
 {
-    boost::test_tools::predicate_result operator()(splited_path const& left, splited_path const& right)
+    boost::test_tools::predicate_result
+    operator()(splited_path const& left, splited_path const& right) const
     {
         return left == right;
     }
