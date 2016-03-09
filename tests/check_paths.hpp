@@ -3,6 +3,7 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
+#include <boost/test/test_tools.hpp>
 
 #include <string>
 #include <vector>
@@ -71,4 +72,5 @@ struct the_same_paths_relative_impl
 //      BOOST_CHECK_THE_SAME_PATHS_RELATIVE("", "d:/a/b");          =>  [x]
 
 #define BOOST_CHECK_THE_SAME_PATHS_RELATIVE( L, R ) \
-    BOOST_CHECK_WITH_ARGS_IMPL( the_same_paths_relative_impl(), "", CHECK, CHECK_EQUAL, (L)(R) )
+    BOOST_TEST_TOOL_IMPL( 0, ::the_same_paths_relative_impl(), "paths not the same", \
+        CHECK, CHECK_EQUAL, (L)(R) )
