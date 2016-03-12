@@ -7,6 +7,7 @@
 #pragma once
 
 #include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 #include <boost/thread.hpp>
 #include <fstream>
 
@@ -72,6 +73,19 @@ public:
         BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
         BOOST_REQUIRE(boost::filesystem::exists(file));
         boost::filesystem::remove(file);
+        boost::filesystem::current_path(boost::filesystem::initial_path());
+        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+    }
+
+    void write_file(const char *file, const char *buffer)
+    {
+        boost::filesystem::current_path(full_path);
+        BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
+        BOOST_REQUIRE(boost::filesystem::exists(file));
+        boost::filesystem::ofstream ofs(file);
+        BOOST_CHECK(ofs);
+        ofs << buffer;
+        ofs.close();
         boost::filesystem::current_path(boost::filesystem::initial_path());
         BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
     }
