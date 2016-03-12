@@ -65,6 +65,22 @@ BOOST_AUTO_TEST_CASE(remove_file)
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::removed);
 }
 
+BOOST_AUTO_TEST_CASE(modify_file)
+{
+    directory dir(TEST_DIR1);
+    auto test_file1 = dir.create_file(TEST_FILE1);
+
+    boost::asio::dir_monitor dm(io_service);
+    dm.add_directory(TEST_DIR1);
+
+    dir.write_file(TEST_FILE1, TEST_FILE2);
+
+    boost::asio::dir_monitor_event ev = dm.monitor();
+
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, test_file1);
+    BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::modified);
+}
+
 BOOST_AUTO_TEST_CASE(multiple_events)
 {
     directory dir(TEST_DIR1);
