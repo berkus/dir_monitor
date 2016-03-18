@@ -36,7 +36,6 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/ptr_container/ptr_unordered_map.hpp>
-#include <boost/enable_shared_from_this.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
 #include <string>
@@ -55,7 +54,6 @@ namespace boost {
 namespace asio {
 
 class dir_monitor_impl :
-    public boost::enable_shared_from_this<dir_monitor_impl>
 {
     class unix_handle
         : public boost::noncopyable
