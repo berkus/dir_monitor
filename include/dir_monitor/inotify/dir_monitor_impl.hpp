@@ -27,8 +27,7 @@
 namespace boost {
 namespace asio {
 
-class dir_monitor_impl :
-    public std::enable_shared_from_this<dir_monitor_impl>
+class dir_monitor_impl
 {
 public:
     dir_monitor_impl()
@@ -142,7 +141,7 @@ public:
     void begin_read()
     {
         stream_descriptor_->async_read_some(boost::asio::buffer(read_buffer_),
-            boost::bind(&dir_monitor_impl::end_read, shared_from_this(),
+            boost::bind(&dir_monitor_impl::end_read, this,
             boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
     }
 
