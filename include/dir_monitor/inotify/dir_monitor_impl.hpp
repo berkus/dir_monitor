@@ -9,6 +9,7 @@
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/bimap.hpp>
+#include <boost/bimap/set_of.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/system/system_error.hpp>
@@ -30,6 +31,25 @@ namespace asio {
 class dir_monitor_impl
 {
 public:
+    struct directory_info
+    {
+        std::string name;
+        bool watch_recursive;
+
+        directory_info(std::string name, bool recursive)
+            : name(name), watch_recursive(recursive)
+        {}
+
+        struct CompareLess
+        {
+            bool operator()(const directory_info& lhs, const directory_info& rhs) const
+            {
+                return (lhs.name < rhs.name);
+            }
+        };
+    };
+
+public:
     dir_monitor_impl()
         : fd_(init_fd()),
         run_(true),
@@ -49,7 +69,7 @@ public:
         }
 
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
-        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
+        watch_descriptors_.insert(watch_descriptors_t::value_type(wd, directory_info(dirname, recursive)));
         lock.unlock();
 
         if(recursive)
@@ -59,7 +79,7 @@ public:
     void remove_directory(const std::string &dirname, bool recursive)
     {
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
-        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
+        watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(directory_info(dirname, recursive));
         if (it != watch_descriptors_.right.end())
         {
             inotify_rm_watch(fd_, it->second);
@@ -78,12 +98,12 @@ public:
             if (boost::filesystem::is_directory(*iter)) {
                 if (add_sub_directory) {
                     try {
-                        add_directory((*iter).path().string());
+                        add_directory((*iter).path().string(), true);
                     } catch (const std::exception&) {
                         continue;
                     }
                 } else {
-                    remove_directory((*iter).path().string());
+                    remove_directory((*iter).path().string(), true);
                 }
             }
         }
@@ -149,6 +169,7 @@ public:
             boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
     }
 
+
 private:
     void end_read(const boost::system::error_code &ec, std::size_t bytes_transferred)
     {
@@ -169,7 +190,7 @@ private:
                 case IN_CREATE | IN_ISDIR:
                     {
                         type = dir_monitor_event::added;
-                        add_directory(get_dirname(iev->wd) + "/" + iev->name);
+                        add_directory(get_dirname(iev->wd) + "/" + iev->name, false);
                         break;
                     }
                 }
@@ -190,7 +211,7 @@ private:
     {
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::left_map::iterator it = watch_descriptors_.left.find(wd);
-        return it != watch_descriptors_.left.end() ? it->second : "";
+        return it != watch_descriptors_.left.end() ? it->second.name : "";
     }
 
     int fd_;
@@ -203,7 +224,7 @@ private:
     std::array<char, 4096> read_buffer_;
     std::string pending_read_buffer_;
     std::mutex watch_descriptors_mutex_;
-    typedef boost::bimap<int, std::string> watch_descriptors_t;
+    typedef boost::bimap<int, boost::bimaps::set_of<directory_info, directory_info::CompareLess>> watch_descriptors_t;
     watch_descriptors_t watch_descriptors_;
     std::mutex events_mutex_;
     std::condition_variable events_cond_;
