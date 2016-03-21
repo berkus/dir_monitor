@@ -70,19 +70,19 @@ public:
         impl.reset();
     }
 
-    void add_directory(implementation_type &impl, const std::string &dirname)
+    void add_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
         boost::filesystem::path dir(boost::filesystem::canonical(dirname));
         if (!boost::filesystem::is_directory(dir))
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dir.native() + " is not a valid directory entry");
 
-        impl->add_directory(dir);
+        impl->add_directory(dir, recursive);
     }
 
-    void remove_directory(implementation_type &impl, const std::string &dirname)
+    void remove_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
         boost::filesystem::path dir(boost::filesystem::canonical(dirname));
-        impl->remove_directory(dir);
+        impl->remove_directory(dir, bool recursive);
     }
 
     /**

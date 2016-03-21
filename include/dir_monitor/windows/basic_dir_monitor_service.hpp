@@ -64,8 +64,9 @@ class basic_dir_monitor_service
 public:
     struct completion_key
     {
-        completion_key(HANDLE h, const std::string &d, std::shared_ptr<DirMonitorImplementation> &i)
+        completion_key(HANDLE h, const std::string &d, bool watchRecursive, std::shared_ptr<DirMonitorImplementation> &i)
             : handle(h),
+            recursive(watchRecursive),
             dirname(d),
             impl(i)
         {
@@ -74,6 +75,7 @@ public:
 
         HANDLE handle;
         std::string dirname;
+        bool recursive;
         std::weak_ptr<DirMonitorImplementation> impl;
         char buffer[1024];
         OVERLAPPED overlapped;
@@ -108,7 +110,7 @@ public:
         impl.reset();
     }
 
-    void add_directory(implementation_type &impl, const std::string &dirname)
+    void add_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
         if (!boost::filesystem::is_directory(dirname))
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
@@ -120,12 +122,12 @@ public:
         // exceptions while handing over a completion key to the I/O completion port module,
         // the ownership has to be *released* at the end of scope so as not to free the memory
         // the OS kernel is using.
-        auto ck_holder = std::make_unique<completion_key>(handle, dirname, impl);
+        auto ck_holder = std::make_unique<completion_key>(handle, dirname, recursive, impl);
         helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0),
             "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
 
         DWORD bytes_transferred; // ignored
-        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
+        helper::throw_system_error_if(FALSE == ReadDirectoryChangesW(ck_holder->handle, ck_holder->buffer, sizeof(ck_holder->buffer), ck_holder->recursive, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
             "boost::asio::basic_dir_monitor_service::add_directory: ReadDirectoryChangesW failed");
 
         impl->add_directory(dirname, ck_holder->handle);
@@ -136,7 +138,7 @@ public:
         ck_holder.release();
     }
 
-    void remove_directory(implementation_type &impl, const std::string &dirname)
+    void remove_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
         // Removing the directory from the implementation will automatically close the associated file handle.
         // Closing the file handle again will make GetQueuedCompletionStatus() return where the completion key
@@ -298,7 +300,7 @@ private:
             } while (fni->NextEntryOffset);
 
             ZeroMemory(&ck_holder->overlapped, sizeof(ck_holder->overlapped));
-            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), FALSE, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
+            helper::throw_system_error_if(!ReadDirectoryChangesW(ck_holder->handle,ck_holder->buffer, sizeof(ck_holder->buffer), ck_holder->recursive, 0x1FF, &bytes_transferred, &ck_holder->overlapped, NULL),
                 "boost::asio::basic_dir_monitor_service::work_thread: ReadDirectoryChangesW failed");
         }
     

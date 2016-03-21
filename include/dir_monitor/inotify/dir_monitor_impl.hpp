@@ -39,7 +39,7 @@ public:
     {
     }
 
-    void add_directory(const std::string &dirname)
+    void add_directory(const std::string &dirname, bool recursive)
     {
         int wd = inotify_add_watch(fd_, dirname.c_str(), IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
         if (wd == -1)
@@ -51,10 +51,12 @@ public:
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_.insert(watch_descriptors_t::value_type(wd, dirname));
         lock.unlock();
-        check_sub_directory(dirname, true);
+
+        if(recursive)
+            check_sub_directory(dirname, true);
     }
 
-    void remove_directory(const std::string &dirname)
+    void remove_directory(const std::string &dirname, bool recursive)
     {
         std::unique_lock<std::mutex> lock(watch_descriptors_mutex_);
         watch_descriptors_t::right_map::iterator it = watch_descriptors_.right.find(dirname);
@@ -63,7 +65,9 @@ public:
             inotify_rm_watch(fd_, it->second);
             watch_descriptors_.right.erase(it);
             lock.unlock();
-            check_sub_directory(dirname, false);
+
+            if(recursive)
+                check_sub_directory(dirname, false);
         }
     }
 

@@ -40,7 +40,7 @@ public:
         stop_fsevents();
     }
 
-    void add_directory(boost::filesystem::path dirname)
+    void add_directory(boost::filesystem::path dirname, bool recursive)
     {
         boost::unique_lock<boost::mutex> lock(dirs_mutex_);
         dirs_.insert(dirname.native());//@todo Store path in dictionary
@@ -48,7 +48,7 @@ public:
         start_fsevents();
     }
 
-    void remove_directory(boost::filesystem::path dirname)
+    void remove_directory(boost::filesystem::path dirname, bool recursive)
     {
         boost::unique_lock<boost::mutex> lock(dirs_mutex_);
         dirs_.erase(dirname.native());
