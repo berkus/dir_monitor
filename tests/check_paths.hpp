@@ -71,6 +71,12 @@ struct the_same_paths_relative_impl
 //      BOOST_CHECK_THE_SAME_PATHS_RELATIVE("c:/a/b", "d:/a/b");    =>  [x]
 //      BOOST_CHECK_THE_SAME_PATHS_RELATIVE("", "d:/a/b");          =>  [x]
 
+#if (BOOST_VERSION >= 105900)
 #define BOOST_CHECK_THE_SAME_PATHS_RELATIVE( L, R ) \
     BOOST_TEST_TOOL_IMPL( 0, ::the_same_paths_relative_impl(), "paths not the same", \
         CHECK, CHECK_EQUAL, (L)(R) )
+#else
+#define BOOST_CHECK_THE_SAME_PATHS_RELATIVE( L, R ) \
+    BOOST_CHECK_WITH_ARGS_IMPL( the_same_paths_relative_impl(), "paths not the same", \
+        CHECK, CHECK_EQUAL, (L)(R) )
+#endif
