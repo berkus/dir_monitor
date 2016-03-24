@@ -41,9 +41,6 @@ public:
     void construct(implementation_type &impl)
     {
         impl.reset(new DirMonitorImplementation());
-
-        // begin_read() can't be called within the constructor but must be called
-        // explicitly as it calls shared_from_this().
         impl->begin_read();
     }
 
