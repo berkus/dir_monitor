@@ -118,3 +118,20 @@ BOOST_AUTO_TEST_CASE(dir_monitor_destruction)
 
     dir.create_file(TEST_FILE1);
 }
+
+BOOST_AUTO_TEST_CASE(non_ascii_paths)
+{
+    char utf8DirName[]  = "\xe6\x97\xa5\xe6\x9c\xac\xe5\x9b\xbd"; // 日本国
+    char utf8FileName[] = "\xd8\xa7\xd9\x84\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a\xd8\xa9"".txt"; // العربية.txt
+
+    directory dir(utf8DirName);
+
+    boost::asio::dir_monitor dm(io_service);
+    dm.add_directory(utf8DirName);
+
+    auto test_file = dir.create_file(utf8FileName);
+
+    boost::asio::dir_monitor_event ev = dm.monitor();
+    BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, test_file);
+    BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::added);
+}
