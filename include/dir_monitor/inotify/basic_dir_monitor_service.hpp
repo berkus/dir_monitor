@@ -90,28 +90,8 @@ public:
             dir_monitor_event ev;
             if (impl)
                 ev = impl->popfront_event(ec);
-            PostAndWait(ec, ev);
-        }
-
-    protected:
-        void PostAndWait(const boost::system::error_code ec, const dir_monitor_event& ev) const
-        {
-            std::mutex post_mutex;
-            std::condition_variable post_condition_variable;
-            bool post_cancel = false;
-
-            this->io_service_.post(
-                [&]
-                {
-                    handler_(ec, ev);
-                    std::lock_guard<std::mutex> lock(post_mutex);
-                    post_cancel = true;
-                    post_condition_variable.notify_one();
-                }
-            );
-            std::unique_lock<std::mutex> lock(post_mutex);
-            while (!post_cancel)
-                post_condition_variable.wait(lock);
+            if(ec != boost::asio::error::operation_aborted)
+                this->io_service_.post(boost::asio::detail::bind_handler(handler_, ec, ev));
         }
 
     private:
