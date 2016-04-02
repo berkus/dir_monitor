@@ -33,27 +33,18 @@ namespace helper {
             }
         }
 
-        inline std::string to_utf8(WCHAR *filename, DWORD length)
+        inline std::wstring to_utf16(const std::string& filename)
         {
-            int size = WideCharToMultiByte(CP_UTF8, 0, filename, length, NULL, 0, NULL, NULL);
+            static std::wstring empty;
+            if (filename.empty())
+                return empty;
 
-            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
+            int size = ::MultiByteToWideChar(CP_UTF8, 0, filename.c_str(), -1, NULL, 0);
+            size = size > 0 ? size - 1 : 0;
+            std::vector<wchar_t> buffer(size);
+            helper::throw_system_error_if(::MultiByteToWideChar(CP_UTF8, 0, filename.c_str(), -1, &buffer[0], size), "boost::asio::basic_dir_monitor_service::to_utf16: MultiByteToWideChar failed");
 
-            char buffer[1024];
-            std::unique_ptr<char[]> dynbuffer;
-            if (size > sizeof(buffer))
-            {
-                dynbuffer = std::make_unique<char[]>(size);
-                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, dynbuffer.get(), size, NULL, NULL);
-            }
-            else
-            {
-                size = WideCharToMultiByte(CP_UTF8, 0, filename, length, buffer, sizeof(buffer), NULL, NULL);
-            }
-
-            helper::throw_system_error_if(!size, "boost::asio::basic_dir_monitor_service::to_utf8: WideCharToMultiByte failed");
-
-            return dynbuffer.get() ? std::string(dynbuffer.get(), size) : std::string(buffer, size);
+            return std::wstring(buffer.begin(), buffer.end());
         }
 }
 
@@ -64,7 +55,7 @@ class basic_dir_monitor_service
 public:
     struct completion_key
     {
-        completion_key(HANDLE h, const std::string &d, std::shared_ptr<DirMonitorImplementation> &i)
+        completion_key(HANDLE h, const std::wstring &d, std::shared_ptr<DirMonitorImplementation> &i)
             : handle(h),
             dirname(d),
             impl(i)
@@ -73,7 +64,7 @@ public:
         }
 
         HANDLE handle;
-        std::string dirname;
+        std::wstring dirname;
         std::weak_ptr<DirMonitorImplementation> impl;
         char buffer[1024];
         OVERLAPPED overlapped;
@@ -110,17 +101,18 @@ public:
 
     void add_directory(implementation_type &impl, const std::string &dirname)
     {
-        if (!boost::filesystem::is_directory(dirname))
+        std::wstring wdirname = helper::to_utf16(dirname);
+        if (!boost::filesystem::is_directory(wdirname))
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
 
-        HANDLE handle = CreateFileA(dirname.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+        HANDLE handle = CreateFileW(wdirname.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
         helper::throw_system_error_if(INVALID_HANDLE_VALUE == handle, "boost::asio::basic_dir_monitor_service::add_directory: CreateFile failed");
 
         // a smart pointer is used to free allocated memory automatically in case of 
         // exceptions while handing over a completion key to the I/O completion port module,
         // the ownership has to be *released* at the end of scope so as not to free the memory
         // the OS kernel is using.
-        auto ck_holder = std::make_unique<completion_key>(handle, dirname, impl);
+        auto ck_holder = std::make_unique<completion_key>(handle, wdirname, impl);
         helper::throw_system_error_if(NULL == CreateIoCompletionPort(ck_holder->handle, iocp_, reinterpret_cast<ULONG_PTR>(ck_holder.get()), 0),
             "boost::asio::basic_dir_monitor_service::add_directory: CreateIoCompletionPort failed");
 
