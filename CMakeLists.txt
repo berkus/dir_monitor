@@ -26,8 +26,16 @@ find_package(Boost COMPONENTS ${BOOST_COMPONENTS} REQUIRED)
 # Then, library itself
 add_library(dir_monitor INTERFACE)
 target_compile_features(dir_monitor INTERFACE cxx_lambdas cxx_auto_type)
-target_include_directories(dir_monitor INTERFACE include)
+target_include_directories(dir_monitor INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 target_include_directories(dir_monitor INTERFACE ${Boost_INCLUDE_DIRS})
+target_link_libraries(dir_monitor INTERFACE ${Boost_LIBRARIES})
+
+# Finally, install the headers and config
+install(TARGETS dir_monitor EXPORT dir_monitor-config)
+install(EXPORT dir_monitor-config DESTINATION lib/dir_monitor/cmake)
+install(DIRECTORY include/ DESTINATION include)
 
 # Test applications
 if (BUILD_TESTING)
