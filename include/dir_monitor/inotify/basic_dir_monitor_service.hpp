@@ -53,17 +53,17 @@ public:
         impl.reset();
     }
 
-    void add_directory(implementation_type &impl, const std::string &dirname)
+    void add_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
         if (!boost::filesystem::is_directory(dirname))
             throw std::invalid_argument("boost::asio::basic_dir_monitor_service::add_directory: " + dirname + " is not a valid directory entry");
 
-        impl->add_directory(dirname);
+        impl->add_directory(dirname, recursive);
     }
 
-    void remove_directory(implementation_type &impl, const std::string &dirname)
+    void remove_directory(implementation_type &impl, const std::string &dirname, bool recursive)
     {
-        impl->remove_directory(dirname);
+        impl->remove_directory(dirname, recursive);
     }
 
     dir_monitor_event monitor(implementation_type &impl, boost::system::error_code &ec)
@@ -90,28 +90,7 @@ public:
             dir_monitor_event ev;
             if (impl)
                 ev = impl->popfront_event(ec);
-            PostAndWait(ec, ev);
-        }
-
-    protected:
-        void PostAndWait(const boost::system::error_code ec, const dir_monitor_event& ev) const
-        {
-            std::mutex post_mutex;
-            std::condition_variable post_condition_variable;
-            bool post_cancel = false;
-
-            this->io_service_.post(
-                [&]
-                {
-                    handler_(ec, ev);
-                    std::lock_guard<std::mutex> lock(post_mutex);
-                    post_cancel = true;
-                    post_condition_variable.notify_one();
-                }
-            );
-            std::unique_lock<std::mutex> lock(post_mutex);
-            while (!post_cancel)
-                post_condition_variable.wait(lock);
+            this->io_service_.post(boost::asio::detail::bind_handler(handler_, ec, ev));
         }
 
     private:
@@ -141,8 +120,6 @@ private:
         // destroyed _after_ the thread is finished (not that the thread tries to access
         // instance properties which don't exist anymore).
         async_monitor_thread_.join();
-        
-        std::cout << "shutdown complete" << std::endl;
     }
 
     boost::asio::io_service async_monitor_io_service_;
