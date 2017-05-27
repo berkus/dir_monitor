@@ -1,9 +1,16 @@
 #
 # Header-only library
+#
 
 # minimum 3.1 for target_compile_features: https://cmake.org/cmake/help/v3.1/command/target_compile_features.html
 # minimum 3.0 for target_include_directories: https://cmake.org/cmake/help/v3.0/command/target_include_directories.html
 cmake_minimum_required(VERSION 3.1)
+project(dir_monitor)
+
+# Follows semver
+set(VERSION_MAJOR 1)
+set(VERSION_MINOR 1)
+set(VERSION_PATCH 0)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON) # Use the FOLDER target property to organize targets into folders
 
@@ -13,15 +20,20 @@ endif()
 
 # First, searching for dependencies
 set (BOOST_COMPONENTS
-	system
-	date_time
-	thread
-	filesystem
+    system
+    date_time
+    thread
+    filesystem
 )
 if (BUILD_TESTING)
-	list(APPEND BOOST_COMPONENTS unit_test_framework)
+    list(APPEND BOOST_COMPONENTS unit_test_framework)
 endif (BUILD_TESTING)
 find_package(Boost COMPONENTS ${BOOST_COMPONENTS} REQUIRED)
+
+configure_file (
+  "${PROJECT_SOURCE_DIR}/version.h.in"
+  "${PROJECT_BINARY_DIR}/version.h"
+)
 
 # Then, library itself
 add_library(dir_monitor INTERFACE)
@@ -36,6 +48,7 @@ target_link_libraries(dir_monitor INTERFACE ${Boost_LIBRARIES})
 install(TARGETS dir_monitor EXPORT dir_monitor-config)
 install(EXPORT dir_monitor-config DESTINATION lib/dir_monitor/cmake)
 install(DIRECTORY include/ DESTINATION include)
+install(FILES "${PROJECT_BINARY_DIR}/version.h" DESTINATION include/dir_monitor)
 
 # Test applications
 if (BUILD_TESTING)
