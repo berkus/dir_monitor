@@ -12,7 +12,10 @@
 
 boost::asio::io_service io_service;
 
-void create_file_handler(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+create_file_handler(boost::filesystem::path const& expected_path,
+                    boost::system::error_code const& ec,
+                    boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
     BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
@@ -33,14 +36,20 @@ BOOST_AUTO_TEST_CASE(create_file)
     io_service.reset();
 }
 
-void rename_file_handler_old(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+rename_file_handler_old(boost::filesystem::path const& expected_path,
+                        boost::system::error_code const& ec,
+                        boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
     BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
     BOOST_CHECK_EQUAL(ev.type, boost::asio::dir_monitor_event::renamed_old_name);
 }
 
-void rename_file_handler_new(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+rename_file_handler_new(boost::filesystem::path const& expected_path,
+                        boost::system::error_code const& ec,
+                        boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
     BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
@@ -66,7 +75,10 @@ BOOST_AUTO_TEST_CASE(rename_file)
     io_service.reset();
 }
 
-void modify_file_handler(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+modify_file_handler(boost::filesystem::path const& expected_path,
+                    boost::system::error_code const& ec,
+                    boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
     BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
@@ -88,7 +100,10 @@ BOOST_AUTO_TEST_CASE(modify_file)
     io_service.reset();
 }
 
-void remove_file_handler(const boost::filesystem::path& expected_path, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+remove_file_handler(boost::filesystem::path const& expected_path,
+                    boost::system::error_code const& ec,
+                    boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::system::error_code());
     BOOST_CHECK_THE_SAME_PATHS_RELATIVE(ev.path, expected_path);
@@ -133,7 +148,8 @@ BOOST_AUTO_TEST_CASE(multiple_events)
     io_service.reset();
 }
 
-void aborted_async_call_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+aborted_async_call_handler(boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::asio::error::operation_aborted);
 }
@@ -153,7 +169,8 @@ BOOST_AUTO_TEST_CASE(aborted_async_call)
     io_service.reset();
 }
 
-void blocked_async_call_handler_with_local_ioservice(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+blocked_async_call_handler_with_local_ioservice(boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::asio::error::operation_aborted);
 }
@@ -183,7 +200,8 @@ BOOST_AUTO_TEST_CASE(blocked_async_call)
     t.join();
 }
 
-void unregister_directory_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+unregister_directory_handler(boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::asio::error::operation_aborted);
 }
@@ -215,7 +233,8 @@ BOOST_AUTO_TEST_CASE(unregister_directory)
     io_service.reset();
 }
 
-void two_dir_monitors_handler(const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+two_dir_monitors_handler(boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev)
 {
     BOOST_CHECK_EQUAL(ec, boost::asio::error::operation_aborted);
 }

@@ -9,6 +9,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/thread.hpp>
+#include <boost/locale.hpp>
 #include <fstream>
 
 #define TEST_DIR1 "A95A7AE9-D5F5-459a-AB8D-28649FB1F3F4"
@@ -19,8 +20,12 @@
 class directory
 {
 public:
-    directory(const char *name)
+    directory(char const* name)
+#ifdef _WIN32
+    : full_path(boost::filesystem::initial_path() / boost::locale::conv::utf_to_utf<wchar_t>(name))
+#else
         : full_path(boost::filesystem::initial_path() / name)
+#endif
     {
         boost::filesystem::create_directory(full_path);
         BOOST_REQUIRE(boost::filesystem::is_directory(full_path));
@@ -29,33 +34,40 @@ public:
     ~directory()
     {
         bool again;
-        do
-        {
-            try
-            {
+        do {
+            try {
                 boost::filesystem::remove_all(full_path);
                 again = false;
             }
-            catch (...)
-            {
+            catch (...) {
                 boost::this_thread::yield();
                 again = true;
             }
-        } while (again);
+        }
+        while (again);
     }
 
-    boost::filesystem::path create_file(const char *file)
+    boost::filesystem::path
+    create_file(char const* file)
     {
         boost::filesystem::current_path(full_path);
         BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
-        std::ofstream ofs(file);
-        BOOST_REQUIRE(boost::filesystem::exists(file));
+
+#ifdef _WIN32
+        boost::filesystem::path file_path(boost::locale::conv::utf_to_utf<wchar_t>(file));
+#else
+        boost::filesystem::path file_path(file);
+#endif
+        boost::filesystem::ofstream ofs(file_path);
+        BOOST_REQUIRE(boost::filesystem::exists(file_path));
         boost::filesystem::current_path(boost::filesystem::initial_path());
-        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
-        return full_path / file;
+        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(),
+                                                    boost::filesystem::initial_path()));
+        return full_path / file_path;
     }
 
-    boost::filesystem::path rename_file(const char *from, const char *to)
+    boost::filesystem::path
+    rename_file(char const* from, char const* to)
     {
         boost::filesystem::current_path(full_path);
         BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
@@ -63,21 +75,25 @@ public:
         boost::filesystem::rename(from, to);
         BOOST_REQUIRE(boost::filesystem::exists(to));
         boost::filesystem::current_path(boost::filesystem::initial_path());
-        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(),
+                                                    boost::filesystem::initial_path()));
         return full_path / to;
     }
 
-    void remove_file(const char *file)
+    void
+    remove_file(char const* file)
     {
         boost::filesystem::current_path(full_path);
         BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
         BOOST_REQUIRE(boost::filesystem::exists(file));
         boost::filesystem::remove(file);
         boost::filesystem::current_path(boost::filesystem::initial_path());
-        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(),
+                                                    boost::filesystem::initial_path()));
     }
 
-    void write_file(const char *file, const char *buffer)
+    void
+    write_file(char const* file, char const* buffer)
     {
         boost::filesystem::current_path(full_path);
         BOOST_REQUIRE(boost::filesystem::equivalent(full_path, boost::filesystem::current_path()));
@@ -87,7 +103,8 @@ public:
         ofs << buffer;
         ofs.close();
         boost::filesystem::current_path(boost::filesystem::initial_path());
-        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(), boost::filesystem::initial_path()));
+        BOOST_REQUIRE(boost::filesystem::equivalent(boost::filesystem::current_path(),
+                                                    boost::filesystem::initial_path()));
     }
 
 private:

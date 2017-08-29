@@ -34,27 +34,32 @@ void print_fsevents_flags(unsigned flags)
 }
 #endif
 
-
-void event_handler(boost::asio::dir_monitor& dm, const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev)
+void
+event_handler(boost::asio::dir_monitor& dm,
+              boost::system::error_code const& ec,
+              boost::asio::dir_monitor_event const& ev)
 {
     if (ec) {
         std::cout << "Error code " << ec << std::endl;
-    } else {
+    }
+    else
+    {
         std::cout << ev << std::endl;
         // Keep it posted forever.
-        dm.async_monitor([&](const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev) {
+        dm.async_monitor([&](boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev) {
             event_handler(dm, ec, ev);
         });
     }
 }
 
-int main()
+int
+main()
 {
     boost::filesystem::create_directory(TEST_DIR1);
 
     boost::asio::dir_monitor dm(io_service);
     dm.add_directory(TEST_DIR1);
-    dm.async_monitor([&](const boost::system::error_code &ec, const boost::asio::dir_monitor_event &ev) {
+    dm.async_monitor([&](boost::system::error_code const& ec, boost::asio::dir_monitor_event const& ev) {
         event_handler(dm, ec, ev);
     });
 

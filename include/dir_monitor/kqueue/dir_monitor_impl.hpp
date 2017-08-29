@@ -53,226 +53,255 @@
 namespace boost {
 namespace asio {
 
-class dir_monitor_impl
-{
-    class unix_handle
-        : public boost::noncopyable
+    class dir_monitor_impl
     {
+        class unix_handle
+            : public boost::noncopyable
+        {
+        public:
+            unix_handle(int handle)
+                : handle_(handle) {}
+
+            ~unix_handle()
+            {
+                ::close(handle_);
+            }
+
+            operator int() const
+            {
+                return handle_;
+            }
+
+        private:
+            int handle_;
+        };
+
+        typedef std::map <std::string, boost::filesystem::directory_entry> dir_entry_map;
+
     public:
-        unix_handle(int handle)
-            : handle_(handle)
+        dir_monitor_impl()
+            : kqueue_(init_kqueue())
+            , run_(true)
+            , work_thread_(&boost::asio::dir_monitor_impl::work_thread, this)
+        {}
+
+        ~dir_monitor_impl()
         {
+            // The work thread is stopped and joined.
+            stop_work_thread();
+            work_thread_.join();
+            ::close(kqueue_);
         }
 
-        ~unix_handle()
+        void
+        add_directory(std::string dirname, int wd)
         {
-            ::close(handle_);
+            boost::unique_lock<boost::mutex> lock(dirs_mutex_);
+            dirs_.insert(dirname, new unix_handle(wd));
+            scan(dirname, entries[dirname]);
         }
 
-        operator int() const { return handle_; }
-
-    private:
-        int handle_;
-    };
-
-    typedef std::map<std::string, boost::filesystem::directory_entry> dir_entry_map;
-
-public:
-    dir_monitor_impl()
-        : kqueue_(init_kqueue())
-        , run_(true)
-        , work_thread_(&boost::asio::dir_monitor_impl::work_thread, this)
-    {}
-
-    ~dir_monitor_impl()
-    {
-        // The work thread is stopped and joined.
-        stop_work_thread();
-        work_thread_.join();
-        ::close(kqueue_);
-    }
-
-    void add_directory(std::string dirname, int wd)
-    {
-        boost::unique_lock<boost::mutex> lock(dirs_mutex_);
-        dirs_.insert(dirname, new unix_handle(wd));
-        scan(dirname, entries[dirname]);
-    }
-
-    void remove_directory(const std::string &dirname)
-    {
-        boost::unique_lock<boost::mutex> lock(dirs_mutex_);
-        dirs_.erase(dirname);
-    }
-
-    void destroy()
-    {
-        boost::unique_lock<boost::mutex> lock(events_mutex_);
-        run_ = false;
-        events_cond_.notify_all();
-    }
-
-    dir_monitor_event popfront_event(boost::system::error_code &ec)
-    {
-        boost::unique_lock<boost::mutex> lock(events_mutex_);
-        while (run_ && events_.empty()) {
-            events_cond_.wait(lock);
-        }
-        dir_monitor_event ev;
-        if (!events_.empty())
+        void
+        remove_directory(std::string const& dirname)
         {
-            ec = boost::system::error_code();
-            ev = events_.front();
-            events_.pop_front();
+            boost::unique_lock<boost::mutex> lock(dirs_mutex_);
+            dirs_.erase(dirname);
         }
-        else
-            ec = boost::asio::error::operation_aborted;
-        return ev;
-    }
 
-    void pushback_event(dir_monitor_event ev)
-    {
-        boost::unique_lock<boost::mutex> lock(events_mutex_);
-        if (run_)
+        void
+        destroy()
         {
-            events_.push_back(ev);
+            boost::unique_lock<boost::mutex> lock(events_mutex_);
+            run_ = false;
             events_cond_.notify_all();
         }
-    }
 
-private:
-    int init_kqueue()
-    {
-        int fd = kqueue();
-        if (fd == -1)
+        dir_monitor_event
+        popfront_event(boost::system::error_code& ec)
         {
-            boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::init_kqueue: kqueue failed");
-            boost::throw_exception(e);
-        }
-        return fd;
-    }
+            boost::unique_lock<boost::mutex> lock(events_mutex_);
 
-    void scan(std::string const& dir, dir_entry_map& entries)
-    {
-        boost::system::error_code ec;
-        boost::filesystem::recursive_directory_iterator it(dir, ec);
-        boost::filesystem::recursive_directory_iterator end;
+            while (run_ && events_.empty()) {
+                events_cond_.wait(lock);
+            }
 
-        if (ec)
-        {
-            boost::system::system_error e(ec, "boost::asio::dir_monitor_impl::scan: unable to iterate directories");
-            boost::throw_exception(e);
-        }
+            dir_monitor_event ev;
 
-        while (it != end)
-        {
-            entries[(*it).path().native()] = *it;
-            ++it;
-        }
-    }
-
-    void compare(std::string const& dir, dir_entry_map& old_entries, dir_entry_map& new_entries)
-    {
-        // @todo filename() loses path relative to dir
-        // Need to construct with dir as a root_path() and get all paths relative to that.
-        for (dir_entry_map::iterator itn = new_entries.begin(); itn != new_entries.end(); ++itn)
-        {
-            dir_entry_map::iterator ito = old_entries.find(itn->first);
-            if (ito != old_entries.end())
+            if (!events_.empty())
             {
-                if (!boost::filesystem::equivalent(itn->second.path(), ito->second.path()) or
-                    boost::filesystem::last_write_time(itn->second.path()) != boost::filesystem::last_write_time(ito->second.path()) or
-                    (boost::filesystem::is_regular_file(itn->second.path()) and boost::filesystem::is_regular_file(ito->second.path()) and
-                    boost::filesystem::file_size(itn->second.path()) != boost::filesystem::file_size(ito->second.path())))
+                ec = boost::system::error_code();
+                ev = events_.front();
+                events_.pop_front();
+            } else {
+                ec = boost::asio::error::operation_aborted;
+            }
+
+            return ev;
+        }
+
+        void
+        pushback_event(dir_monitor_event ev)
+        {
+            boost::unique_lock<boost::mutex> lock(events_mutex_);
+
+            if (run_)
+            {
+                events_.push_back(ev);
+                events_cond_.notify_all();
+            }
+        }
+
+    private:
+        int
+        init_kqueue()
+        {
+            int fd = kqueue();
+
+            if (fd == -1)
+            {
+                boost::system::system_error e(boost::system::error_code(errno,
+                                                                        boost::system::get_system_category()),
+                                              "boost::asio::dir_monitor_impl::init_kqueue: kqueue failed");
+                boost::throw_exception(e);
+            }
+
+            return fd;
+        }
+
+        void
+        scan(std::string const& dir, dir_entry_map& entries)
+        {
+            boost::system::error_code ec;
+            boost::filesystem::recursive_directory_iterator it(dir, ec);
+            boost::filesystem::recursive_directory_iterator end;
+
+            if (ec)
+            {
+                boost::system::system_error e(ec, "boost::asio::dir_monitor_impl::scan: unable to iterate directories");
+                boost::throw_exception(e);
+            }
+
+            while (it != end)
+            {
+                entries[(*it).path().native()] = *it;
+                ++it;
+            }
+        }
+
+        void
+        compare(std::string const& dir, dir_entry_map& old_entries, dir_entry_map& new_entries)
+        {
+            // @todo filename() loses path relative to dir
+            // Need to construct with dir as a root_path() and get all paths relative to that.
+            for (dir_entry_map::iterator itn = new_entries.begin(); itn != new_entries.end(); ++itn)
+            {
+                dir_entry_map::iterator ito = old_entries.find(itn->first);
+
+                if (ito != old_entries.end())
                 {
-                    pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(), dir_monitor_event::modified));
+                    if (!boost::filesystem::equivalent(itn->second.path(), ito->second.path()) or
+                        boost::filesystem::last_write_time(itn->second.path())
+                            != boost::filesystem::last_write_time(ito->second.path()) or
+                        (boost::filesystem::is_regular_file(itn->second.path())
+                            and boost::filesystem::is_regular_file(ito->second.path()) and
+                            boost::filesystem::file_size(itn->second.path())
+                                != boost::filesystem::file_size(ito->second.path())))
+                    {
+                        pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(),
+                                                         dir_monitor_event::modified));
+                    }
+                    old_entries.erase(ito);
+                } else {
+                    pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(),
+                                                     dir_monitor_event::added));
                 }
-                old_entries.erase(ito);
             }
-            else
+
+            for (dir_entry_map::iterator it = old_entries.begin(); it != old_entries.end(); ++it)
             {
-                pushback_event(dir_monitor_event(boost::filesystem::path(dir) / itn->second.path().filename(), dir_monitor_event::added));
+                pushback_event(dir_monitor_event(boost::filesystem::path(dir) / it->second.path().filename(),
+                                                 dir_monitor_event::removed));
             }
         }
-        for (dir_entry_map::iterator it = old_entries.begin(); it != old_entries.end(); ++it)
-        {
-            pushback_event(dir_monitor_event(boost::filesystem::path(dir) / it->second.path().filename(), dir_monitor_event::removed));
-        }
-    }
 
-    void work_thread()
-    {
-        while (running())
+        void
+        work_thread()
         {
-            for (auto dir : dirs_)
+            while (running())
             {
-                struct timespec timeout;
-                timeout.tv_sec = 0;
-                timeout.tv_nsec = 200000000;
-                unsigned eventFilter = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_EXTEND | NOTE_ATTRIB;
-                struct kevent event;
-                struct kevent eventData;
-                EV_SET(&event, *dir->second, EVFILT_VNODE, EV_ADD | EV_CLEAR, eventFilter, 0, 0);
-                int nEvents = kevent(kqueue_, &event, 1, &eventData, 1, &timeout);
-
-                if (nEvents < 0 or eventData.flags == EV_ERROR)
+                for (auto dir : dirs_)
                 {
-                    boost::system::system_error e(boost::system::error_code(errno, boost::system::get_system_category()), "boost::asio::dir_monitor_impl::work_thread: kevent failed");
-                    boost::throw_exception(e);
+                    struct timespec timeout;
+                    timeout.tv_sec = 0;
+                    timeout.tv_nsec = 200000000;
+                    unsigned eventFilter = NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_EXTEND | NOTE_ATTRIB;
+                    struct kevent event;
+                    struct kevent eventData;
+                    EV_SET(&event, *dir->second, EVFILT_VNODE, EV_ADD | EV_CLEAR, eventFilter, 0, 0);
+                    int nEvents = kevent(kqueue_, &event, 1, &eventData, 1, &timeout);
+
+                    if (nEvents < 0 || eventData.flags == EV_ERROR)
+                    {
+                        boost::system::system_error e(boost::system::error_code(errno,
+                                                                                boost::system::get_system_category()),
+                                                      "boost::asio::dir_monitor_impl::work_thread: kevent failed");
+                        boost::throw_exception(e);
+                    }
+
+                    // dir_monitor_event::event_type type = dir_monitor_event::null;
+                    // if (eventData.fflags & NOTE_WRITE) {
+                    //     type = dir_monitor_event::modified;
+                    // }
+                    // else if (eventData.fflags & NOTE_DELETE) {
+                    //     type = dir_monitor_event::removed;
+                    // }
+                    // else if (eventData.fflags & NOTE_RENAME) {
+                    //     type = dir_monitor_event::renamed_new_name;
+                    // case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
+                    // case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
+                    // }
+
+                    // Run recursive directory check to find changed files
+                    // Similar to Poco's DirectoryWatcher
+                    // @todo Use FSEvents API on OSX?
+
+                    dir_entry_map new_entries;
+                    scan(dir->first, new_entries);
+                    compare(dir->first, entries[dir->first], new_entries);
+                    std::swap(entries[dir->first], new_entries);
                 }
-
-                // dir_monitor_event::event_type type = dir_monitor_event::null;
-                // if (eventData.fflags & NOTE_WRITE) {
-                //     type = dir_monitor_event::modified;
-                // }
-                // else if (eventData.fflags & NOTE_DELETE) {
-                //     type = dir_monitor_event::removed;
-                // }
-                // else if (eventData.fflags & NOTE_RENAME) {
-                //     type = dir_monitor_event::renamed_new_name;
-                // case FILE_ACTION_RENAMED_OLD_NAME: type = dir_monitor_event::renamed_old_name; break;
-                // case FILE_ACTION_RENAMED_NEW_NAME: type = dir_monitor_event::renamed_new_name; break;
-                // }
-
-                // Run recursive directory check to find changed files
-                // Similar to Poco's DirectoryWatcher
-                // @todo Use FSEvents API on OSX?
-
-                dir_entry_map new_entries;
-                scan(dir->first, new_entries);
-                compare(dir->first, entries[dir->first], new_entries);
-                std::swap(entries[dir->first], new_entries);
             }
         }
-    }
 
-    bool running()
-    {
-        // Access to run_ is sychronized with stop_work_thread().
-        boost::mutex::scoped_lock lock(work_thread_mutex_);
-        return run_;
-    }
+        bool
+        running()
+        {
+            // Access to run_ is sychronized with stop_work_thread().
+            boost::mutex::scoped_lock lock(work_thread_mutex_);
+            return run_;
+        }
 
-    void stop_work_thread()
-    {
-        // Access to run_ is sychronized with running().
-        boost::mutex::scoped_lock lock(work_thread_mutex_);
-        run_ = false;
-    }
+        void
+        stop_work_thread()
+        {
+            // Access to run_ is sychronized with running().
+            boost::mutex::scoped_lock lock(work_thread_mutex_);
+            run_ = false;
+        }
 
-    int kqueue_;
-    boost::unordered_map<std::string, dir_entry_map> entries;
-    bool run_;
-    boost::mutex work_thread_mutex_;
-    boost::thread work_thread_;
+        int kqueue_;
+        boost::unordered_map<std::string, dir_entry_map> entries;
+        bool run_;
+        boost::mutex work_thread_mutex_;
+        boost::thread work_thread_;
 
-    boost::mutex dirs_mutex_;
-    boost::ptr_unordered_map<std::string, unix_handle> dirs_;
+        boost::mutex dirs_mutex_;
+        boost::ptr_unordered_map<std::string, unix_handle> dirs_;
 
-    boost::mutex events_mutex_;
-    boost::condition_variable events_cond_;
-    std::deque<dir_monitor_event> events_;
-};
+        boost::mutex events_mutex_;
+        boost::condition_variable events_cond_;
+        std::deque <dir_monitor_event> events_;
+    };
 
 } // asio namespace
 } // boost namespace

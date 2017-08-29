@@ -23,21 +23,21 @@ struct dir_monitor_event
         modified = 3,
         renamed_old_name = 4,
         renamed_new_name = 5,
-        /**
-         * In some cases a recursive scan of directory under dirname is required.
-         */
+        /* In some cases a recursive scan of directory under dirname is required. */
         recursive_rescan = 6
     };
 
     dir_monitor_event()
-        : type(null) { }
+        : type(null) {}
 
-    dir_monitor_event(const boost::filesystem::path &p, event_type t)
-        : path(p), type(t) { }
+    dir_monitor_event(boost::filesystem::path const& p, event_type t)
+        : path(p), type(t) {}
 
-    const char* type_cstr() const
+    const char*
+    type_cstr() const
     {
-        switch(type) {
+        switch (type)
+        {
             case boost::asio::dir_monitor_event::added: return "ADDED";
             case boost::asio::dir_monitor_event::removed: return "REMOVED";
             case boost::asio::dir_monitor_event::modified: return "MODIFIED";
@@ -52,49 +52,53 @@ struct dir_monitor_event
     event_type type;
 };
 
-inline std::ostream& operator << (std::ostream& os, dir_monitor_event const& ev)
+inline std::ostream&
+operator<<(std::ostream& os, dir_monitor_event const& ev)
 {
     os << "dir_monitor_event " << ev.type_cstr() << " " << ev.path;
     return os;
 }
 
-template <typename Service>
+template<typename Service>
 class basic_dir_monitor
     : public boost::asio::basic_io_object<Service>
 {
 public:
-    explicit basic_dir_monitor(boost::asio::io_service &io_service)
-        : boost::asio::basic_io_object<Service>(io_service)
+    explicit basic_dir_monitor(boost::asio::io_service& io_service)
+        : boost::asio::basic_io_object<Service>(io_service) {}
+
+    void
+    add_directory(std::string const& dirname)
     {
+        get_service().add_directory(get_implementation(), dirname);
     }
 
-    void add_directory(const std::string &dirname)
+    void
+    remove_directory(std::string const& dirname)
     {
-        this->get_service().add_directory(this->get_implementation(), dirname);
+        get_service().remove_directory(get_implementation(), dirname);
     }
 
-    void remove_directory(const std::string &dirname)
-    {
-        this->get_service().remove_directory(this->get_implementation(), dirname);
-    }
-
-    dir_monitor_event monitor()
+    dir_monitor_event
+    monitor()
     {
         boost::system::error_code ec;
-        dir_monitor_event ev = this->get_service().monitor(this->get_implementation(), ec);
+        dir_monitor_event ev = get_service().monitor(get_implementation(), ec);
         boost::asio::detail::throw_error(ec);
         return ev;
     }
 
-    dir_monitor_event monitor(boost::system::error_code &ec)
+    dir_monitor_event
+    monitor(boost::system::error_code& ec)
     {
-        return this->get_service().monitor(this->get_implementation(), ec);
+        return get_service().monitor(get_implementation(), ec);
     }
 
-    template <typename Handler>
-    void async_monitor(Handler handler)
+    template<typename Handler>
+    void
+    async_monitor(Handler handler)
     {
-        this->get_service().async_monitor(this->get_implementation(), handler);
+        get_service().async_monitor(get_implementation(), handler);
     }
 };
 
