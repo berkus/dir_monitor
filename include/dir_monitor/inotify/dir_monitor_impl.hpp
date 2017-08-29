@@ -114,7 +114,7 @@ namespace asio {
         popfront_event(boost::system::error_code& ec)
         {
             std::unique_lock <std::mutex> lock(events_mutex_);
-            events_cond_.wait(lock, [run_, events_]() {
+            events_cond_.wait(lock, [this]() {
                 return !(run_ && events_.empty());
             });
 

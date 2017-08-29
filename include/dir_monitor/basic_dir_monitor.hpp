@@ -70,20 +70,20 @@ public:
     void
     add_directory(std::string const& dirname)
     {
-        get_service().add_directory(get_implementation(), dirname);
+        this->get_service().add_directory(this->get_implementation(), dirname);
     }
 
     void
     remove_directory(std::string const& dirname)
     {
-        get_service().remove_directory(get_implementation(), dirname);
+        this->get_service().remove_directory(this->get_implementation(), dirname);
     }
 
     dir_monitor_event
     monitor()
     {
         boost::system::error_code ec;
-        dir_monitor_event ev = get_service().monitor(get_implementation(), ec);
+        dir_monitor_event ev = this->get_service().monitor(this->get_implementation(), ec);
         boost::asio::detail::throw_error(ec);
         return ev;
     }
@@ -91,14 +91,14 @@ public:
     dir_monitor_event
     monitor(boost::system::error_code& ec)
     {
-        return get_service().monitor(get_implementation(), ec);
+        return this->get_service().monitor(this->get_implementation(), ec);
     }
 
     template<typename Handler>
     void
     async_monitor(Handler handler)
     {
-        get_service().async_monitor(get_implementation(), handler);
+        this->get_service().async_monitor(this->get_implementation(), handler);
     }
 };
 
