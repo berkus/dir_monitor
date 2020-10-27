@@ -102,9 +102,16 @@ public:
     };
 
     template <typename Handler>
-    void async_monitor(implementation_type &impl, Handler handler)
-    {
-        this->async_monitor_io_service_.post(monitor_operation<Handler>(impl, this->get_io_service(), handler));
+    BOOST_ASIO_INITFN_RESULT_TYPE(Handler, void(boost::system::error_code,
+                                                boost::asio::dir_monitor_event))
+    async_monitor(implementation_type &impl, Handler handler) {
+      boost::asio::detail::async_result_init<
+          Handler,
+          void(boost::system::error_code, boost::asio::dir_monitor_event)>
+          init(BOOST_ASIO_MOVE_CAST(Handler)(handler));
+      this->async_monitor_io_service_.post(
+          monitor_operation<Handler>(impl, this->get_io_service(), handler));
+    return init.result.get();
     }
 
 private:
