@@ -87,13 +87,17 @@ public:
         {
             implementation_type impl = impl_.lock();
             boost::system::error_code ec = boost::asio::error::operation_aborted;
-            dir_monitor_event ev;
-            if (impl)
-                ev = impl->popfront_event(ec);
-            PostAndWait(ec, ev);
+            dir_monitor_event ev = impl ? impl->popfront_event(ec) : dir_monitor_event();
+#ifdef BOOST_OS_LINUX
+                // On Linux, avoid PostAndWait due to potential deadlock
+                this->io_service_.post(boost::asio::detail::bind_handler(handler_, ec, ev));
+#else
+                PostAndWait(ec, ev);
+#endif
         }
 
     protected:
+#ifndef BOOST_OS_LINUX
         void PostAndWait(const boost::system::error_code ec, const dir_monitor_event& ev) const
         {
             std::mutex post_mutex;
@@ -113,6 +117,7 @@ public:
             while (!post_cancel)
                 post_condition_variable.wait(lock);
         }
+#endif
 
     private:
         std::weak_ptr<DirMonitorImplementation> impl_;
